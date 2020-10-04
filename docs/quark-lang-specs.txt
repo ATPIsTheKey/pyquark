@@ -1,0 +1,163 @@
+Program -> Expr ";" Program
+         | ε
+
+Expr -> Let_expr
+      | Fun_expr
+      | Lambda_expr
+      | If_then_expr
+      | Arith_expr
+      | ID Expr  # todo: ambiguous with Arith_expr
+      | ID
+
+Let_expr -> "let" ID "=" Expr "in"  Expr
+
+Fun_expr -> "fun" ID "with" ID_list "=" Expr "in" Expr
+
+Lambda_expr -> "lambda" ID_list "." Expr
+
+If_then_expr -> "if" Expr "then" Expr "else" Expr
+
+
+/////////////////////////////////////////////////////
+
+
+Logical_expr -> Or_expr
+
+Or_expr -> And_expr Or_expr_r
+
+Or_expr_r -> "or" Or_expr_r
+            | ε
+
+And_expr -> Not_expr And_expr_r
+
+And_expr_r -> "and" And_expr_r
+            | ε
+
+Not_expr -> Comp_expr Not_expr_r
+
+Not_expr_r -> "not" Comp_expr
+            | ε
+
+
+/////////////////////////////////////////////////////
+
+
+Comp_expr -> Arith_expr
+
+Comp_expr_r -> "==" Comp_expr_r
+			 | "!=" Comp_expr_r
+			 | ">"  Comp_expr_r
+			 | ">=" Comp_expr_r
+			 | "<"  Comp_expr_r
+			 | "<=" Comp_expr_r
+
+
+
+/////////////////////////////////////////////////////
+
+
+Arith_expr -> Term Arith_expr_r
+
+Arith_expr_r -> "+" Term Arith_expr_r
+              | "-" Term Arith_expr_r
+              | ε
+
+Term -> Factor Term_r
+
+Term_r -> "*"  Factor Term_r
+        | "/"  Factor Term_r
+        | "//" Factor Term_r
+        | "%"  Factor Term_r
+        | "@"  Factor Term_r
+        | ε
+
+Factor -> Power Factor_r
+
+Factor_r -> "**" Power Factor_r
+          | ε
+
+Power -> Atom
+
+Atom -> Expr_list
+      | String_concat
+      | NUMBER
+      | ID
+
+
+/////////////////////////////////////////////////////
+
+
+Expr_list -> Expr
+            | Expr Expr_list
+
+ID_list -> ID
+         | "," ID
+
+
+/////////////////////////////////////////////////////
+
+
+String_concat -> STRING String_concat_r
+
+String_concat_r -> STRING String_concat_r
+                 | ε
+
+ID -> [a-zA-Z_$]+[a-zA-Z0-9_$]*
+
+COMMENT -> #1(#+|\n)
+
+STRING -> \"[^\"\n]*\"
+
+NUMBER -> INTEGER
+        | REAL
+        | COMPLEX
+
+INTEGER -> ^([1-9]+[0-9]*|0+)$
+
+REAL -> [INTEGER] "." INTEGER
+
+COMPLEX -> REAL "j"
+
+OPERATOR -> "+"
+          | "-"
+          | "%"
+          | "*"
+          | "**"
+          | "/"
+          | "//"
+          | "@"
+          | "&"
+          | "|"
+          | "<"
+          | ">"
+          | ">="
+          | "<="
+          | "="
+          | "=="
+          | "!="
+          | "not"
+          | "and"
+          | "or"
+          | "xor"
+
+KEYWORD ->  "if"
+          | "then"
+          | "else"
+          | "with"
+          | "lambda"
+          | "with"
+          | "fun"
+          | "nil"  (* todo: maybe treat as predefined id *)
+          | "cout" (* todo: maybe treat as predefined id *)
+          | "cin"  (* todo: maybe treat as predefined id *)
+
+SEPARATORS -> ","
+            | "."
+            | "{"
+            | "}"
+            | "("
+            | ")"
+            | "["
+            | "]"
+            | "..."
+            | ";"
