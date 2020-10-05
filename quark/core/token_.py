@@ -3,7 +3,7 @@ from typing import Tuple, Union
 
 
 __all__ = [
-    'TokenTypes', 'Token', 'tokens', 'is_valid_identifier', 'is_keyword'
+    'TokenTypes', 'Token', 'tokens', 'is_valid_identifier', 'is_keyword', 'common_prefixes_suffixes'
 ]
 
 
@@ -52,11 +52,11 @@ tok_type_names = (
     'XOR',
     'CAR',
     'CDR',
-    'NIL'
+    'NIL',
     'operator_end',
 
     # Keyword tokens
-    'keyword_beg'
+    'keyword_beg',
     'IF',
     'THEN',
     'ELSE',
@@ -146,6 +146,10 @@ tokens = {
     **double_char_tokens,
     **triple_char_tokens,
     **keyword_tokens
+}
+
+common_prefixes_suffixes = {
+    '<': ('=',), '=': ('=',), ':': (':',), '!': ('=',),
 }
 
 
@@ -244,6 +248,10 @@ def is_valid_identifier(s: str) -> bool:
 
 def is_keyword(s: str) -> bool:
     return s in keyword_tokens.keys()
+
+
+def is_common_prefix(c: str) -> bool:
+    return c in common_prefixes_suffixes.keys()
 
 
 if __name__ == '__main__':

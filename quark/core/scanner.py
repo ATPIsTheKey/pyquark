@@ -1,5 +1,6 @@
 from quark.core.token_ import Token, TokenTypes, is_valid_identifier, is_keyword
 
+import io
 from typing import List, Tuple, TextIO, Union, Generator
 
 
@@ -9,28 +10,103 @@ class QuarkScannerError(Exception):
 
 
 class QuarkScanner:
-    def __init__(self, error_report=True, skip_wst=True, mode=1):
+    def __init__(self, source: Union[TextIO, str], error_report=True, skip_wst=True, mode=1):
+        self._from_fp = isinstance(source, io.IOBase)
+        if not self._from_fp or not isinstance(source, str):
+            raise QuarkScannerError(f'Expected TextIO or str for source, got {type(source)} instead.')
+        self._source = source
+
         self._error_report = error_report
-        self._skip_wst = True
+        self._skip_wst = skip_wst
         self._mode = mode
 
-    def _scan_source_line(self, source_line: str, init_line_num=0, init_column_num=0) -> Generator[Token, None, None]:
-        column_num, line_num = 0, init_column_num
+        self._line_buff = ''
+        self._column_start, self._column_pos, self._line_pos = 0, 0, 0
 
-        for c in source_line:
-            pass
+    def reset(self, source: Union[TextIO, str], error_report=True, skip_wst=True, mode=1):
+        self.__init__(source, error_report, skip_wst, mode)
 
-    def get_token_iter(self, source: Union[TextIO, str]) -> Generator[Token, None, None]:
-        if isinstance(source, TextIO):
-            for line_num, line in enumerate(source):
-                yield from self._scan_source_line(line, init_line_num=line_num)
-        elif isinstance(source, str):
-            yield from self._scan_source_line(source)
+    def _refill_buffer(self, keep=None):
+        self._line_buff = self._line_buff[keep] if keep else ''
+        self._line_buff += next(self._source)
+        self._line_pos += 1
+        self._column_start, self._column_pos = 0, 0
+
+    @property
+    def _current_char(self):
+        return self._line_buff[self._column_pos]
+
+    @property
+    def _next_char(self):
+        if len(self._line_buff) == 1:
+            if self._from_fp:
+                try:
+                    self._refill_buffer(keep=self._column_pos)
+                except StopIteration:
+                    raise QuarkScannerError('Cannot peek; last source char!')
+            else:
+                raise QuarkScannerError('Cannot peek; last source char!')
+        return self._line_buff[self._column_pos + 1]
+
+    def _consume_char(self):
+        if not self._line_buff:
+            if self._from_fp:
+                try:
+                    self._refill_buffer()
+                except StopIteration:
+                    raise QuarkScannerError('Cannot consume; no more source chars!')
+            else:
+                raise QuarkScannerError('Cannot consume; no more source chars!')
+        self._column_pos += 1
+
+    def _expect(self, c: str):
+        if not self._current_char == c:
+            raise QuarkScannerError(f'Expected "{c}" at {self._line_pos}:{self._column_pos}')
+
+    def _match(self, c: str) -> bool:
+        return self._current_char == c
+
+    def _get_consumed_chars(self) -> str:
+        return self._line_buff[self._column_start:self._column_pos]
+
+    def _is_potential_id_start(self) -> bool:
+        return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
+               or self._current_char == '_' or ord(self._current_char) >= 128
+
+    def _is_potentials_id_char(self) -> bool:
+        return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
+               or '0' <= self._current_char <= '9' or self._current_char == '_' or ord(self._current_char) >= 128
+
+    def _is_potential_num_start(self) -> bool:
+        return '0' <= self._current_char <= '9' or self._current_char == '.'
+
+    def _is_num_char(self) -> bool:
+        return '0' <= self._current_char <= '9'
+
+    def _must_be_real(self) -> bool:
+        return self._current_char == '0' or self._current_char == '.'
+
+    def _consume_num(self):
+        must_be_real = self._must_be_real()
+        while self._is_num_char():
+            self._consume_char()
+        if must_be_real:
+            self._expect('.')
+            self._consume_char()
+            while self._is_num_char():
+                self._consume_char()
+        elif self._match('.'):
+            self._consume_char()
+            while self._is_num_char():
+                self._consume_char()
+        if self._match('im'):
+            token_value = float(self._get_consumed_chars()) * 1j
+            token_type = TokenTypes.COMPLEX
         else:
-            raise QuarkScannerError(f'Expected TextIO or str for source, got {type(source)} instead.')
+            token_value = float(self._get_consumed_chars())
+            token_type = TokenTypes.REAL
 
-    def get_tokens(self, source: Union[TextIO, str]):
-        return list(self.get_token_iter(source))
+        return Token(token_type, token_value, (self._line_pos, self._column_pos))
 
 
 if __name__ == '__main__':
