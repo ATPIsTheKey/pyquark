@@ -78,14 +78,10 @@ Factor_r -> "**" Power Factor_r
 
 Power -> Atom
 
-Atom -> Expr_list
+Atom -> "(" Expr_list ")"
       | String_concat
       | NUMBER
       | ID
-
-
-/////////////////////////////////////////////////////
-
 
 Expr_list -> Expr
             | Expr Expr_list
