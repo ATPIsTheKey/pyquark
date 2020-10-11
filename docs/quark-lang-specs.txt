@@ -5,9 +5,8 @@ Expr -> Let_expr
       | Fun_expr
       | Lambda_expr
       | If_then_expr
-      | Arith_expr
-      | ID Expr  # todo: ambiguous with Arith_expr
-      | ID
+      | Application_expr
+      | Logical_expr
 
 Let_expr -> "let" ID "=" Expr "in"  Expr
 
@@ -17,85 +16,93 @@ Lambda_expr -> "lambda" ID_list "." Expr
 
 If_then_expr -> "if" Expr "then" Expr "else" Expr
 
-
-/////////////////////////////////////////////////////
-
+Application_expr -> "[" Expr Expr_list "]"
 
 Logical_expr -> Or_expr
 
 Or_expr -> And_expr Or_expr_r
 
-Or_expr_r -> "or" Or_expr_r
-            | ε
+Or_expr_rhs -> "or" And_expr Or_expr_rhs
+             | ε
 
-And_expr -> Not_expr And_expr_r
+And_expr -> Not_expr And_expr_rhs
 
-And_expr_r -> "and" And_expr_r
-            | ε
-
-Not_expr -> Comp_expr Not_expr_r
-
-Not_expr_r -> "not" Comp_expr
-            | ε
-
-
-/////////////////////////////////////////////////////
-
-
-Comp_expr -> Arith_expr
-
-Comp_expr_r -> "==" Comp_expr_r
-			 | "!=" Comp_expr_r
-			 | ">"  Comp_expr_r
-			 | ">=" Comp_expr_r
-			 | "<"  Comp_expr_r
-			 | "<=" Comp_expr_r
-
-
-
-/////////////////////////////////////////////////////
-
-
-Arith_expr -> Term Arith_expr_r
-
-Arith_expr_r -> "+" Term Arith_expr_r
-              | "-" Term Arith_expr_r
+And_expr_rhs -> "and"  Not_expr And_expr_rhs
               | ε
 
-Term -> Factor Term_r
+Not_expr -> Comp_expr Not_expr_rhs
 
-Term_r -> "*"  Factor Term_r
-        | "/"  Factor Term_r
-        | "//" Factor Term_r
-        | "%"  Factor Term_r
-        | "@"  Factor Term_r
-        | ε
+Not_expr_rhs -> "not" Comp_expr Not_expr_rhs
+              | ε
 
-Factor -> Power Factor_r
+Comp_expr -> Arith_expr Comp_expr_rhs
 
-Factor_r -> "**" Power Factor_r
-          | ε
+Comp_expr_rhs -> "==" Arith_expr Comp_expr_rhs
+               | "!=" Arith_expr Comp_expr_rhs
+               | ">"  Arith_expr Comp_expr_rhs
+               | ">=" Arith_expr Comp_expr_rhs
+               | "<"  Arith_expr Comp_expr_rhs
+               | "<=" Comp_exprArith_expromp_expr_rhs
+               | ε
 
-Power -> Atom
+Arith_expr -> Term_expr Arith_expr_rhs
 
-Atom -> "(" Expr_list ")"
-      | String_concat
-      | NUMBER
-      | ID
+Arith_expr_rhs -> "+" Term_expr Arith_expr_rhs
+                | "-" Term_expr Arith_expr_rhs
+                | ε
 
-Expr_list -> Expr
-            | Expr Expr_list
+Term_expr -> Factor_expr Term_expr_rhs
 
-ID_list -> ID
-         | "," ID
+Term_expr_rhs -> "*"  Factor_expr Term_expr_rhs
+               | "/"  Factor_expr Term_expr_rhs
+               | "//" Factor_expr Term_expr_rhs
+               | "%"  Factor_expr Term_expr_rhs
+               | ε
 
+Factor_expr -> Power_expr Factor_expr_rhs
 
-/////////////////////////////////////////////////////
+Factor_expr_rhs -> "**" Power_expr Factor_expr_rhs
+          	     | ε
 
+Power_expr -> Nil_expr Power_expr_rhs
 
-String_concat -> STRING String_concat_r
+Power_expr_rhs -> "**" Power_expr_rhs
+          	    | ε
 
-String_concat_r -> STRING String_concat_r
+Nil_expr -> List_expr Nil_expr_rhs
+
+Nil_expr_rhs -> "nil" List_expr Nil_expr_rhs
+          	  | ε
+
+List_expr -> List_access_expr List_expr_rhs
+
+List_expr_rhs -> "|" List_access_expr List_expr_rhs
+		       | ε
+
+List_access_expr -> Atom_expr List_expr_rhs
+
+List_access_expr_rhs -> "#" List_access_expr List_expr_rhs
+			 		  | "!" List_access_expr List_expr_rhs
+          	 		  | ε
+
+Atom_expr -> "(" Expr_list ")"
+      	   | String_concat
+           | NUMBER
+           | ID
+
+Expr_list -> Expr Expr_list_rhs
+
+Expr_list_rhs -> Expr Expr_list_rhs
+			 | ε
+
+ID_list -> ID ID_list_rhs
+
+ID_list_rhs _> "," ID_list_rhs
+          	| ε
+
+String_concat -> STRING String_concat_rhs
+
+String_concat_rhs -> STRING String_concat_rhs
                  | ε
 
 ID -> [a-zA-Z_$]+[a-zA-Z0-9_$]*
@@ -108,7 +115,7 @@ NUMBER -> INTEGER
         | REAL
         | COMPLEX
 
-INTEGER -> ^([1-9]+[0-9]*|0+)$
+INTEGER -> ([1-9]+[0-9]*|0+)
 
 REAL -> [INTEGER] "." INTEGER
 
@@ -135,6 +142,7 @@ OPERATOR -> "+"
           | "and"
           | "or"
           | "xor"
+          | "nil"
 
 KEYWORD ->  "if"
           | "then"
@@ -143,9 +151,8 @@ KEYWORD ->  "if"
           | "lambda"
           | "with"
           | "fun"
-          | "nil"  (* todo: maybe treat as predefined id *)
-          | "cout" (* todo: maybe treat as predefined id *)
-          | "cin"  (* todo: maybe treat as predefined id *)
+          | "cout"
+          | "cin"
 
 SEPARATORS -> ","
             | "."
