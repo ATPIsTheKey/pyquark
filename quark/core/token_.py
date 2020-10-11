@@ -3,18 +3,19 @@ from typing import Tuple, Union
 
 
 __all__ = [
-    'TokenTypes', 'Token', 'tokens', 'is_valid_identifier', 'is_keyword', 'common_prefixes_suffixes'
+    'TokenTypes', 'Token', 'tokens', 'simple_tokens', 'common_prefix_tokens', 'double_char_tokens',
+    'keyword_tokens'
 ]
 
 
 tok_type_names = (
     # Special tokens
-    'special_beg'
+    'special_beg',
     'COMMENT',
     'SKIP',
     'MISMATCH',
     'EOF',
-    'special_end'
+    'special_end',
 
     # Literal tokens
     'literal_beg',
@@ -23,7 +24,7 @@ tok_type_names = (
     'REAL',
     'COMPLEX',
     'STRING',
-    'literal_end'
+    'literal_end',
     
     # Operator tokens
     'operator_beg',
@@ -64,12 +65,12 @@ tok_type_names = (
     'IN',
     'LAMBDA',
     'FUN',
-    'keyword_end'
-    
+    'keyword_end',
+
     # Separator tokens
     'separator_beg',
     'COMMA',
-    'DOT',
+    'PERIOD',
     'LEFT_PARENTHESIS',
     'RIGHT_PARENTHESIS',
     'LEFT_CURLY_BRACKET',
@@ -81,13 +82,84 @@ tok_type_names = (
     'SEMICOLON',
     'SPACE',
     'TAB',
+    'SPACE',
     'NEWLINE',
+    'TAB',
     'separator_end'
 )
 TokenTypes: IntEnum = IntEnum('TokenTypes', {n: i for i, n in enumerate(tok_type_names)})
 
 
-single_char_tokens = {
+simple_tokens = {
+    '+': TokenTypes.PLUS,
+    '-': TokenTypes.MINUS,
+    '%': TokenTypes.PERCENT,
+    '@': TokenTypes.AT,
+    '&': TokenTypes.AMPERSAND,
+    ',': TokenTypes.COMMA,
+    '.': TokenTypes.PERIOD,
+    '{': TokenTypes.LEFT_CURLY_BRACKET,
+    '}': TokenTypes.RIGHT_CURLY_BRACKET,
+    '(': TokenTypes.LEFT_PARENTHESIS,
+    ')': TokenTypes.RIGHT_PARENTHESIS,
+    '[': TokenTypes.LEFT_BRACKET,
+    ']': TokenTypes.RIGHT_BRACKET,
+    '"': TokenTypes.QUOTE,
+    ';': TokenTypes.SEMICOLON,
+    '\n': TokenTypes.NEWLINE
+}
+
+common_prefix_tokens = {
+    '*': (
+        ('**', TokenTypes.DOUBLE_STAR),
+        ('*', TokenTypes.STAR)
+    ),
+    '/': (
+        ('//', TokenTypes.DOUBLE_SLASH),
+        ('/', TokenTypes.SLASH)
+    ),
+    '<': (
+        ('<=', TokenTypes.LESS_EQUAL),
+        ('<', TokenTypes.LESS)
+    ),
+    '>': (
+        ('>=', TokenTypes.GREATER_EQUAL),
+        ('>', TokenTypes.GREATER)
+    ),
+    '=': (
+        ('==', TokenTypes.DOUBLE_EQUAL),
+        ('=', TokenTypes.EQUAL)
+    ),
+    ':': (
+        ('::', TokenTypes.DOUBLE_COLON),
+        (':', TokenTypes.COLON)
+    ),
+}
+
+
+double_char_tokens = {
+    '!=': TokenTypes.EXCLAMATION_EQUAL
+}
+
+keyword_tokens = {
+    'not': TokenTypes.NOT,
+    'and': TokenTypes.AND,
+    'or': TokenTypes.OR,
+    'xor': TokenTypes.XOR,
+    'car': TokenTypes.CAR,
+    'cdr': TokenTypes.CDR,
+    'nil': TokenTypes.NIL,
+    'if': TokenTypes.IF,
+    'then': TokenTypes.THEN,
+    'else': TokenTypes.ELSE,
+    'with': TokenTypes.WITH,
+    'in': TokenTypes.IN,
+    'lambda': TokenTypes.LAMBDA,
+    'fun': TokenTypes.FUN,
+}
+
+
+tokens = {
     '+': TokenTypes.PLUS,
     '-': TokenTypes.MINUS,
     '%': TokenTypes.PERCENT,
@@ -99,7 +171,8 @@ single_char_tokens = {
     '>': TokenTypes.GREATER,
     '=': TokenTypes.EQUAL,
     ',': TokenTypes.COMMA,
-    '.': TokenTypes.DOT,
+    '.': TokenTypes.PERIOD,
+    ':': TokenTypes.COLON,
     '{': TokenTypes.LEFT_CURLY_BRACKET,
     '}': TokenTypes.RIGHT_CURLY_BRACKET,
     '(': TokenTypes.LEFT_PARENTHESIS,
@@ -107,10 +180,8 @@ single_char_tokens = {
     '[': TokenTypes.LEFT_BRACKET,
     ']': TokenTypes.RIGHT_BRACKET,
     '"': TokenTypes.QUOTE,
-    ';': TokenTypes.SEMICOLON
-}
-
-double_char_tokens = {
+    ';': TokenTypes.SEMICOLON,
+    '\n': TokenTypes.NEWLINE,
     '**': TokenTypes.DOUBLE_STAR,
     '::': TokenTypes.DOUBLE_COLON,
     '//': TokenTypes.DOUBLE_SLASH,
@@ -118,38 +189,22 @@ double_char_tokens = {
     '>=': TokenTypes.GREATER_EQUAL,
     '==': TokenTypes.DOUBLE_EQUAL,
     '!=': TokenTypes.EXCLAMATION_EQUAL,
-    'or': TokenTypes.OR
-}
-
-triple_char_tokens = {
     'not': TokenTypes.NOT,
     'and': TokenTypes.AND,
+    'or': TokenTypes.OR,
     'xor': TokenTypes.XOR,
     'car': TokenTypes.CAR,
     'cdr': TokenTypes.CDR,
     'nil': TokenTypes.NIL,
-    '...': TokenTypes.ELLIPSIS
-}
-
-keyword_tokens = {
     'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
     'else': TokenTypes.ELSE,
     'with': TokenTypes.WITH,
     'in': TokenTypes.IN,
     'lambda': TokenTypes.LAMBDA,
-    'fun': TokenTypes.FUN
-}
-
-tokens = {
-    **single_char_tokens,
-    **double_char_tokens,
-    **triple_char_tokens,
-    **keyword_tokens
-}
-
-common_prefixes_suffixes = {
-    '<': ('=',), '=': ('=',), ':': (':',), '!': ('=',),
+    'fun': TokenTypes.FUN,
+    ' ': TokenTypes.SPACE,
+    '\t': TokenTypes.TAB
 }
 
 
@@ -163,42 +218,21 @@ class Token:
         self._highest_precedence = 10
 
     def is_special(self) -> bool:
-        """
-        Returns True for tokens corresponding to special tokens; it returns false otherwise.
-        """
         return TokenTypes.special_beg < self.type < TokenTypes.special_end
 
     def is_literal(self) -> bool:
-        """
-         Returns True for tokens corresponding to identifiers and basic type literals; it returns
-         false otherwise.
-        """
         return TokenTypes.literal_beg < self.type < TokenTypes.literal_end
 
     def is_operator(self) -> bool:
-        """
-        Returns True for tokens corresponding to operators and delimiters; it returns false
-        otherwise.
-        """
         return TokenTypes.operator_beg < self.type < TokenTypes.operator_end
 
     def is_keyword(self) -> bool:
-        """
-        Returns True for tokens corresponding to keywords; it returns false otherwise.
-        """
         return TokenTypes.keyword_beg < self.type < TokenTypes.keyword_end
 
     def is_separator(self) -> bool:
-        """
-        Returns True for tokens corresponding to separators; it returns false otherwise.
-        """
         return TokenTypes.separator_beg < self.type < TokenTypes.separator_end
 
     def get_precedence(self) -> int:
-        """
-        Returns the operator precedence of token value. If token value is not a binary operator, the
-        result is lowest_precedence.
-        """
         if self.type in (TokenTypes.OR, TokenTypes.XOR):
             return 1
         elif self.type == TokenTypes.AND:
@@ -206,8 +240,8 @@ class Token:
         elif self.type == TokenTypes.NOT:
             return 3
         elif self.type in (
-            TokenTypes.DOUBLE_EQUALS, TokenTypes.EXCLAMATION_EQUALS, TokenTypes.GREATER,
-            TokenTypes.SMALLER, TokenTypes.GREATER_EQUALS, TokenTypes.SMALLER_EQUALS
+            TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER,
+            TokenTypes.LESS, TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
         ):
             return 4
         elif self.type in (TokenTypes.PLUS, TokenTypes.MINUS):
@@ -230,29 +264,17 @@ class Token:
             return self._lowest_precedence
 
     def __str__(self):
-        return f'<{self.type.name}>:"{self.value}" at {self.pos}'
+        return f'<{self.type.name}>: {repr(self.value)} at {self.pos}'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.__str__()})'
 
     def __eq__(self, other: 'Token'):
-        return self.value == other.value
+        return self.type == other.type
 
     def __hash__(self):
         return hash((self.type, self.value, self.pos))
 
 
-def is_valid_identifier(s: str) -> bool:
-    return s.isidentifier()
-
-
-def is_keyword(s: str) -> bool:
-    return s in keyword_tokens.keys()
-
-
-def is_common_prefix(c: str) -> bool:
-    return c in common_prefixes_suffixes.keys()
-
-
 if __name__ == '__main__':
-    pass
+    print(tokens)
