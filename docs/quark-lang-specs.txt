@@ -1,108 +1,102 @@
 Program -> Expr ";" Program
          | ε
 
-Expr -> Let_expr
-      | Fun_expr
-      | Lambda_expr
-      | If_then_expr
-      | Application_expr
-      | Logical_expr
+Expr -> Let_Expr
+      | Fun_Expr
+      | Lambda_Expr
+      | If_Then_Expr
+      | Application_Expr
+      | Logical_Expr
 
-Let_expr -> "let" ID "=" Expr "in"  Expr
+Let_Expr -> "let" ID "=" Expr "in"  Expr
 
-Fun_expr -> "fun" ID "with" ID_list "=" Expr "in" Expr
+Fun_Expr -> "fun" ID "with" ID_List "=" Expr_List "in" Expr
 
-Lambda_expr -> "lambda" ID_list "." Expr
+Lambda_Expr -> "lambda" ID_List "." Expr
 
-If_then_expr -> "if" Expr "then" Expr "else" Expr
+If_then_Expr -> "if" Expr "then" Expr "else" Expr
 
-Application_expr -> "[" Expr Expr_list "]"
+Application_Expr -> Expr "on" Expr_List
 
-Logical_expr -> Or_expr
+Logical_Expr -> Or_Expr
 
-Or_expr -> And_expr Or_expr_r
+Or_Expr -> And_Expr Or_Expr_r
 
-Or_expr_rhs -> "or" And_expr Or_expr_rhs
+Or_Expr_Rhs -> "or" And_Expr Or_Expr_Rhs
              | ε
 
-And_expr -> Not_expr And_expr_rhs
+And_Expr -> Not_Expr And_Expr_Rhs
 
-And_expr_rhs -> "and"  Not_expr And_expr_rhs
+And_Expr_Rhs -> "and"  Not_Expr And_Expr_Rhs
               | ε
 
-Not_expr -> Comp_expr Not_expr_rhs
+Not_Expr -> "not" Not_Expr
+          | Comp_Expr
 
-Not_expr_rhs -> "not" Comp_expr Not_expr_rhs
-              | ε
+Comp_Expr -> Arith_Expr Comp_Expr_Rhs
 
-Comp_expr -> Arith_expr Comp_expr_rhs
-
-Comp_expr_rhs -> "==" Arith_expr Comp_expr_rhs
-               | "!=" Arith_expr Comp_expr_rhs
-               | ">"  Arith_expr Comp_expr_rhs
-               | ">=" Arith_expr Comp_expr_rhs
-               | "<"  Arith_expr Comp_expr_rhs
-               | "<=" Comp_exprArith_expromp_expr_rhs
+Comp_Expr_Rhs -> "==" Arith_Expr Comp_Expr_Rhs
+               | "!=" Arith_Expr Comp_Expr_Rhs
+               | ">"  Arith_Expr Comp_Expr_Rhs
+               | ">=" Arith_Expr Comp_Expr_Rhs
+               | "<"  Arith_Expr Comp_Expr_Rhs
+               | "<=" Arith_Expr Comp_Expr_Rhs
                | ε
 
-Arith_expr -> Term_expr Arith_expr_rhs
+Arith_Expr -> Term_Expr Arith_Expr_Rhs
 
-Arith_expr_rhs -> "+" Term_expr Arith_expr_rhs
-                | "-" Term_expr Arith_expr_rhs
+Arith_Expr_Rhs -> "+" Term_Expr Arith_Expr_Rhs
+                | "-" Term_Expr Arith_Expr_Rhs
                 | ε
 
-Term_expr -> Factor_expr Term_expr_rhs
+Term_Expr -> Factor_Expr Term_Expr_Rhs
 
-Term_expr_rhs -> "*"  Factor_expr Term_expr_rhs
-               | "/"  Factor_expr Term_expr_rhs
-               | "//" Factor_expr Term_expr_rhs
-               | "%"  Factor_expr Term_expr_rhs
+Term_Expr_Rhs -> "*"  Factor_Expr Term_Expr_Rhs
+               | "/"  Factor_Expr Term_Expr_Rhs
+               | "//" Factor_Expr Term_Expr_Rhs
+               | "%"  Factor_Expr Term_Expr_Rhs
                | ε
 
-Factor_expr -> Power_expr Factor_expr_rhs
+Factor_Expr -> "+" Factor_Expr
+             | "-" Factor_Expr
+             | "~" Factor_Expr
+             | Power_Expr
 
-Factor_expr_rhs -> "**" Power_expr Factor_expr_rhs
-          	     | ε
+Power_Expr -> Nil_Expr Power_Expr_Rhs
 
-Power_expr -> Nil_expr Power_expr_rhs
-
-Power_expr_rhs -> "**" Power_expr_rhs
+Power_Expr_Rhs -> "**" Power_Expr_Rhs
           	    | ε
 
-Nil_expr -> List_expr Nil_expr_rhs
+Nil_Expr -> "nil" Nil_Expr
+          | List_Expr
 
-Nil_expr_rhs -> "nil" List_expr Nil_expr_rhs
-          	  | ε
+List_Expr -> List_Access_Expr List_Expr_Rhs
 
-List_expr -> List_access_expr List_expr_rhs
-
-List_expr_rhs -> "|" List_access_expr List_expr_rhs
+List_Expr_Rhs -> "|" List_Access_Expr List_Expr_Rhs
 		       | ε
 
-List_access_expr -> Atom_expr List_expr_rhs
+List_Access_Expr -> "car" List_Access_Expr
+			 	  | "cdr" List_Access_Expr
+          	 	  | Atom_Expr
 
-List_access_expr_rhs -> "#" List_access_expr List_expr_rhs
-			 		  | "!" List_access_expr List_expr_rhs
-          	 		  | ε
-
-Atom_expr -> "(" Expr_list ")"
-      	   | String_concat
+Atom_Expr -> "(" Expr_List ")"
+      	   | String_Concat
            | NUMBER
            | ID
 
-Expr_list -> Expr Expr_list_rhs
+Expr_List -> Expr Expr_List_Rhs
 
-Expr_list_rhs -> Expr Expr_list_rhs
-			 | ε
+Expr_List_Rhs -> "," Expr Expr_List_Rhs
+			   | ε
 
-ID_list -> ID ID_list_rhs
+ID_List -> ID ID_List_Rhs
 
-ID_list_rhs _> "," ID_list_rhs
-          	| ε
+ID_List_Rhs _> "," ID_List_Rhs
+           	 | ε
 
-String_concat -> STRING String_concat_rhs
+String_Concat -> STRING String_Concat_Rhs
 
-String_concat_rhs -> STRING String_concat_rhs
+String_Concat_Rhs -> STRING String_Concat_Rhs
                  | ε
 
 ID -> [a-zA-Z_$]+[a-zA-Z0-9_$]*
@@ -119,7 +113,7 @@ INTEGER -> ([1-9]+[0-9]*|0+)
 
 REAL -> [INTEGER] "." INTEGER
 
-COMPLEX -> REAL "j"
+COMPLEX -> REAL "im"
 
 OPERATOR -> "+"
           | "-"
@@ -148,6 +142,7 @@ KEYWORD ->  "if"
           | "then"
           | "else"
           | "with"
+          | "let"
           | "lambda"
           | "with"
           | "fun"
@@ -162,5 +157,4 @@ SEPARATORS -> ","
             | ")"
             | "["
             | "]"
-            | "..."
             | ";"
