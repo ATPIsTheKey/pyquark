@@ -3,7 +3,8 @@ from typing import Tuple, Union
 
 
 __all__ = [
-    'TokenTypes', 'Token', 'tokens', 'simple_tokens', 'common_prefix_tokens', 'double_char_tokens',
+    'TokenTypes', 'Token', 'tokens', 'simple_single_char_tokens', 'common_prefix_tokens',
+    'simple_double_char_tokens',
     'keyword_tokens'
 ]
 
@@ -28,8 +29,19 @@ tok_type_names = (
     
     # Operator tokens
     'operator_beg',
+
+    # Unary operators
+    'unary_operator_beg',
     'PLUS',
     'MINUS',
+    'TILDE',
+    'XOR',
+    'CAR',
+    'CDR',
+    'NIL',
+    'NOT',
+    'unary_operator_end',
+
     'PERCENT',
     'STAR',
     'DOUBLE_STAR',
@@ -47,13 +59,8 @@ tok_type_names = (
     'EQUAL',
     'DOUBLE_EQUAL',
     'EXCLAMATION_EQUAL',
-    'NOT',
     'AND',
     'OR',
-    'XOR',
-    'CAR',
-    'CDR',
-    'NIL',
     'operator_end',
 
     # Keyword tokens
@@ -61,10 +68,12 @@ tok_type_names = (
     'IF',
     'THEN',
     'ELSE',
+    'LET',
     'WITH',
     'IN',
     'LAMBDA',
     'FUN',
+    'ON',
     'keyword_end',
 
     # Separator tokens
@@ -80,6 +89,7 @@ tok_type_names = (
     'QUOTE',
     'ELLIPSIS',
     'SEMICOLON',
+    'VERTICAL_BAR',
     'SPACE',
     'TAB',
     'SPACE',
@@ -90,7 +100,7 @@ tok_type_names = (
 TokenTypes: IntEnum = IntEnum('TokenTypes', {n: i for i, n in enumerate(tok_type_names)})
 
 
-simple_tokens = {
+simple_single_char_tokens = {
     '+': TokenTypes.PLUS,
     '-': TokenTypes.MINUS,
     '%': TokenTypes.PERCENT,
@@ -104,6 +114,8 @@ simple_tokens = {
     ')': TokenTypes.RIGHT_PARENTHESIS,
     '[': TokenTypes.LEFT_BRACKET,
     ']': TokenTypes.RIGHT_BRACKET,
+    '|': TokenTypes.VERTICAL_BAR,
+    '~': TokenTypes.TILDE,
     '"': TokenTypes.QUOTE,
     ';': TokenTypes.SEMICOLON,
     '\n': TokenTypes.NEWLINE
@@ -137,7 +149,7 @@ common_prefix_tokens = {
 }
 
 
-double_char_tokens = {
+simple_double_char_tokens = {
     '!=': TokenTypes.EXCLAMATION_EQUAL
 }
 
@@ -152,8 +164,10 @@ keyword_tokens = {
     'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
     'else': TokenTypes.ELSE,
+    'let': TokenTypes.LET,
     'with': TokenTypes.WITH,
     'in': TokenTypes.IN,
+    'on': TokenTypes.ON,
     'lambda': TokenTypes.LAMBDA,
     'fun': TokenTypes.FUN,
 }
@@ -226,13 +240,17 @@ class Token:
     def is_operator(self) -> bool:
         return TokenTypes.operator_beg < self.type < TokenTypes.operator_end
 
+    def is_unary_operator(self) -> bool:
+        return TokenTypes.unary_operator_beg < self.type < TokenTypes.unary_oeprator_end
+
     def is_keyword(self) -> bool:
         return TokenTypes.keyword_beg < self.type < TokenTypes.keyword_end
 
     def is_separator(self) -> bool:
         return TokenTypes.separator_beg < self.type < TokenTypes.separator_end
 
-    def get_precedence(self) -> int:
+    @property
+    def precedence(self):
         if self.type in (TokenTypes.OR, TokenTypes.XOR):
             return 1
         elif self.type == TokenTypes.AND:
@@ -258,7 +276,7 @@ class Token:
             TokenTypes.CAR, TokenTypes.CDR
         ):
             return 9
-        elif self.type == TokenTypes.AT:
+        elif self.type == TokenTypes.VERTICAL_BAR:
             return 10
         else:
             return self._lowest_precedence

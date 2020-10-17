@@ -1,4 +1,8 @@
-let f = lambda n . if n = 0 then 1 else n * [f (n-1)] in f 4;
+let f = lambda n . if n == 0.0 then 1 else n * f on (n - 1) in f on 4;
+let f = lambda n . if n == 0.0 then 1 else [f n - 1] in [f 4];
 let x = 1 in let y = 3 in x + y;
-let y = 2 in [sin y];
-[sin pi/2];
+let y = 2 in sin on y;
+sin on pi/2;
+let x = pi / 2 in (sin on x) / (cos on x);
+f on x;
+let p = f on f on f in p on 4;

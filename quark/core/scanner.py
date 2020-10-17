@@ -1,4 +1,4 @@
-from quark.core.token_ import Token, TokenTypes, tokens
+from quark.core.token_ import Token, TokenTypes, keyword_tokens
 
 from typing import List, Tuple, Union, Generator
 
@@ -104,9 +104,9 @@ class QuarkScanner:
 
     def _as_keyword(self) -> Union[None, Token]:
         try:
-            return tokens[self._consumed_chars]
+            return keyword_tokens[self._consumed_chars]
         except KeyError:
-            return
+            return None
 
     def next_token(self) -> Token:
         token_type = None
@@ -137,7 +137,7 @@ class QuarkScanner:
             while self._is_str_char():
                 self._consume_char()
             self._expect(
-                '"', not_met_msg=f'SyntaxError at {self._pos}: EOL while scanning string literal'
+                '"', not_met_msg=f'EOL while scanning string literal'
             )
         elif self._match('.'):
             self._consume_char()
@@ -160,8 +160,7 @@ class QuarkScanner:
                 self._consume_char()
             if must_be_real:
                 self._expect(
-                    '.', not_met_msg=f'SyntaxError at {self._pos}: leading zeros in decimal integer'
-                                     f' literals are not permitted'
+                    '.', not_met_msg=f'Leading zeros in decimal integer literals are not permitted'
                 )
                 self._consume_char()
                 while self._is_num_char():
@@ -231,11 +230,12 @@ class QuarkScanner:
             else:
                 token_type = TokenTypes.GREATER
         elif self._match('='):
+            self._consume_char()
             if self._match('='):
                 self._consume_char()
                 token_type = TokenTypes.DOUBLE_EQUAL
             else:
-                token_type = TokenTypes.EQUALS
+                token_type = TokenTypes.EQUAL
         elif self._match(','):
             self._consume_char()
             token_type = TokenTypes.COMMA
@@ -263,6 +263,12 @@ class QuarkScanner:
         elif self._match(';'):
             self._consume_char()
             token_type = TokenTypes.SEMICOLON
+        elif self._match('~'):
+            self._consume_char()
+            token_type = TokenTypes.TILDE
+        elif self._match('|'):
+            self._consume_char()
+            token_type = TokenTypes.VERTICAL_BAR
         elif self._match(':'):
             self._consume_char()
             if self._match(':'):
@@ -280,7 +286,6 @@ class QuarkScanner:
 
         token = Token(token_type, self._consumed_chars, self._pos)
         self._discard_consumed_chars()
-
         return token
 
     def tokens(self) -> List[Token]:
