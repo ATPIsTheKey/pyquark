@@ -1,4 +1,5 @@
-let f = lambda n . if n == 0.0 then 1 else n * f on (n - 1) in f on 4;
+let f = lambda n . if n == 0.0 then 1 else n * f on avg on n - 1, n, n + 1;
+fun fac with n = if n == 0.0 then 1 else n * f on n - 1;
 let f = lambda n . if n == 0.0 then 1 else [f n - 1] in [f 4];
 let x = 1 in let y = 3 in x + y;
 let y = 2 in sin on y;

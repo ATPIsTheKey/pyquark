@@ -1,0 +1,2 @@
+- Scanner in deadloop on input 'let y = 2 in "sin on y;'
+- Make application term in let expressions optional

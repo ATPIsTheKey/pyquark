@@ -52,25 +52,20 @@ class QuarkParser:
     def _expect(self, token_type: TokenTypes):
         if not self._match(token_type):
             raise QuarkParserError(
-                f'SyntaxError: invalid syntax at {self._current_token.pos}'
+                f'SyntaxError: invalid syntax at {self._current_token.pos}. Expected {str(token_type)}.'
             )
 
     def _parse_expression(self) -> AnyExpressionType:
         if self._match(TokenTypes.LET):
-            expression = self._parse_let_expression()
+            return self._parse_let_expression()
         elif self._match(TokenTypes.FUN):
-            expression = self._parse_fun_expression()
+            return self._parse_fun_expression()
         elif self._match(TokenTypes.IF):
-            expression = self._parse_if_then_else_expression()
+            return self._parse_if_then_else_expression()
         elif self._match(TokenTypes.LAMBDA):
-            expression = self._parse_lambda_expression()
+            return self._parse_lambda_expression()
         else:  # must be or expression
-            expression = self._parse_or_expression()
-        if self._match(TokenTypes.ON):
-            self._consume_token()
-            return ApplicationExpression(expression, self._parse_expression_list())
-        else:
-            return expression
+            return self._parse_or_expression()
 
     def _parse_let_expression(self) -> LetExpression:
         self._expect(TokenTypes.LET)
@@ -126,19 +121,10 @@ class QuarkParser:
             alternative = None
         return IfThenElseExpression(condition, consequent, alternative)
 
-    def _parse_application_expression(self) -> ApplicationExpression:
-        self._expect(TokenTypes.LEFT_BRACKET)
-        self._consume_token()
-        function = self._parse_expression()
-        arguments = self._parse_expression_list()
-        self._expect(TokenTypes.RIGHT_BRACKET)
-        self._consume_token()
-        return ApplicationExpression(function, arguments)
-
-    def _parse_or_expression(self) -> OrExpression:
-        return OrExpression(
-            self._parse_and_expression(), self._parse_or_expression_rhs()
-        )
+    def _parse_or_expression(self):
+        lhs = self._parse_and_expression()
+        rhs = self._parse_or_expression_rhs()
+        return lhs if not rhs else OrExpression(lhs, rhs)
 
     def _parse_or_expression_rhs(self) -> Union[OrExpressionRhs, None]:
         if self._match(TokenTypes.OR):
@@ -149,10 +135,10 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_and_expression(self) -> AndExpression:
-        return AndExpression(
-            self._parse_not_expression(), self._parse_and_expression_rhs()
-        )
+    def _parse_and_expression(self):
+        lhs = self._parse_not_expression()
+        rhs = self._parse_and_expression_rhs()
+        return lhs if not rhs else AndExpression(lhs, rhs)
 
     def _parse_and_expression_rhs(self) -> Union[AndExpressionRhs, None]:
         if self._match_any_from(TokenTypes.AND):
@@ -163,20 +149,22 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_not_expression(self) -> NotExpression:
+    def _parse_not_expression(self) -> Union[NotExpression, ComparisonExpression]:
         if self._match(TokenTypes.NOT):
             operand = self._current_token
             self._consume_token()
-            lhs = self._parse_not_expression()
+            if self._match(TokenTypes.NOT):
+                lhs = self._parse_not_expression()
+            else:
+                lhs = self.parse_comparison_expression()
+            return NotExpression(operand, lhs)
         else:
-            operand = None
-            lhs = self.parse_comparison_expression()
-        return NotExpression(operand, lhs)
+            return self.parse_comparison_expression()
 
-    def parse_comparison_expression(self) -> ComparisonExpression:
-        return ComparisonExpression(
-            self._parse_arithmetic_expression(), self._parse_comparison_expression_rhs()
-        )
+    def parse_comparison_expression(self) -> Union[ComparisonExpression, ArithmeticExpression]:
+        lhs = self._parse_arithmetic_expression()
+        rhs = self._parse_comparison_expression_rhs()
+        return lhs if not rhs else ComparisonExpression(lhs, rhs)
 
     def _parse_comparison_expression_rhs(self) -> Union[ComparisonExpressionRhs, None]:
         if self._match_any_from(
@@ -191,10 +179,10 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_arithmetic_expression(self) -> ArithmeticExpression:
-        return ArithmeticExpression(
-            self._parse_term_expression(), self._parse_arithmetic_expression_rhs()
-        )
+    def _parse_arithmetic_expression(self) -> Union[ArithmeticExpression, TermExpression]:
+        lhs = self._parse_term_expression()
+        rhs = self._parse_arithmetic_expression_rhs()
+        return lhs if not rhs else ArithmeticExpression(lhs, rhs)
 
     def _parse_arithmetic_expression_rhs(self) -> Union[ArithmeticExpressionRhs, None]:
         if self._match_any_from(
@@ -208,10 +196,10 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_term_expression(self) -> TermExpression:
-        return TermExpression(
-            self._parse_factor_expression(), self._parse_term_expression_rhs()
-        )
+    def _parse_term_expression(self) -> Union[TermExpression, FactorExpression]:
+        lhs = self._parse_factor_expression()
+        rhs = self._parse_term_expression_rhs()
+        return lhs if not rhs else TermExpression(lhs, rhs)
 
     def _parse_term_expression_rhs(self) -> Union[TermExpressionRhs, None]:
         if self._match_any_from(
@@ -225,22 +213,26 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_factor_expression(self) -> FactorExpression:
+    def _parse_factor_expression(self) -> Union[FactorExpression, PowerExpression]:
         if self._match_any_from(
                 TokenTypes.PLUS, TokenTypes.MINUS, TokenTypes.TILDE
         ):
             operand = self._current_token
             self._consume_token()
-            lhs = self._parse_factor_expression()
+            if self._match_any_from(
+                    TokenTypes.PLUS, TokenTypes.MINUS, TokenTypes.TILDE
+            ):
+                lhs = self._parse_factor_expression()
+            else:
+                lhs = self._parse_power_expression()
+            return FactorExpression(operand, lhs)
         else:
-            operand = None
-            lhs = self._parse_power_expression()
-        return FactorExpression(operand, lhs)
+            return self._parse_power_expression()
 
     def _parse_power_expression(self) -> PowerExpression:
-        return PowerExpression(
-            self._parse_nil_expression(), self._parse_power_expression_rhs()
-        )
+        lhs = self._parse_nil_expression()
+        rhs = self._parse_power_expression_rhs()
+        return lhs if not rhs else PowerExpression(lhs, rhs)
 
     def _parse_power_expression_rhs(self) -> Union[PowerExpressionRhs, None]:
         if self._match(TokenTypes.DOUBLE_STAR):
@@ -254,22 +246,22 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_nil_expression(self) -> NilExpression:
+    def _parse_nil_expression(self) -> Union[NilExpression, ListExpression]:
         if self._match(TokenTypes.NIL):
             operand = self._current_token
             self._consume_token()
+            if self._match(TokenTypes.NIL):
+                lhs = self._parse_nil_expression()
+            else:
+                lhs = self._parse_list_expression()
+            return NilExpression(operand, lhs)
         else:
-            operand = None
-        if self._match(TokenTypes.NIL):
-            rhs = self._parse_nil_expression()
-        else:
-            rhs = self._parse_list_expression()
-        return NilExpression(operand, rhs)
+            return self._parse_list_expression()
 
     def _parse_list_expression(self) -> ListExpression:
-        return ListExpression(
-            self._parse_list_access_expression(), self._parse_list_expression_rhs()
-        )
+        lhs = self._parse_list_access_expression()
+        rhs = self._parse_list_expression_rhs()
+        return lhs if not rhs else ListExpression(lhs, rhs)
 
     def _parse_list_expression_rhs(self) -> Union[ListExpressionRhs, None]:
         if self._match(TokenTypes.VERTICAL_BAR):
@@ -283,23 +275,31 @@ class QuarkParser:
         else:
             return None
 
-    def _parse_list_access_expression(self) -> ListAccessExpression:
+    def _parse_list_access_expression(self) -> Union[ListAccessExpression, AtomExpression]:
         if self._match_any_from(TokenTypes.CAR, TokenTypes.CDR):
             operand = self._current_token
             self._consume_token()
+            if self._match_any_from(TokenTypes.CAR, TokenTypes.CDR):
+                lhs = self._parse_list_access_expression()
+            else:
+                lhs = self._parse_application_expression()
+            return ListAccessExpression(operand, lhs)
         else:
-            operand = None
-        if self._match(TokenTypes.CAR) or self._match(TokenTypes.CDR):
-            rhs = self._parse_list_access_expression()
-        else:
-            rhs = self._parse_atom_expression()
-        return ListAccessExpression(operand, rhs)
+            return self._parse_application_expression()
 
-    def _parse_atom_expression(self) -> AtomExpression:
+    def _parse_application_expression(self):
+        lhs = self._parse_atom_expression()
+        if self._match(TokenTypes.ON):
+            self._consume_token()
+            rhs = self._parse_expression_list()
+            return ApplicationExpression(lhs, rhs)
+        return lhs
+
+    def _parse_atom_expression(self) -> Union[AtomExpression, ApplicationExpression]:
         if self._match(TokenTypes.LEFT_PARENTHESIS):
             self._consume_token()
             atom = AtomExpression(self._parse_expression_list())
-            self._consume_token()  # consume right parenthesis
+            self._consume_token()  # right parenthesis
             return atom
         elif self._match_any_from(TokenTypes.STRING, TokenTypes.INTEGER, TokenTypes.REAL,
                                   TokenTypes.ID, TokenTypes.COMPLEX):
@@ -333,7 +333,7 @@ class QuarkParser:
 
 
 if __name__ == '__main__':
-    src_test = 'let a = 234 in a * a'
+    src_test = 'sin on 1'
     scanner = QuarkScanner(src_test)
     tokens = scanner.tokens()
     print(

@@ -1,6 +1,6 @@
 from quark.core.token_ import Token, TokenTypes, keyword_tokens
 
-from typing import List, Tuple, Union, Generator
+from typing import List, Tuple, Union
 
 
 class QuarkScannerError(Exception):
@@ -55,7 +55,7 @@ class QuarkScanner:
     def _expect(self, c: str, not_met_msg: str):
         if not self._current_char == c:
             raise QuarkScannerError(
-                f'SyntaxError at {self._pos}: Expected "{c}" at '
+                f'SyntaxError: Expected "{c}" at '
                 f'{self._line_pos}:{self._column_pos}. {not_met_msg}'
             )
 

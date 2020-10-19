@@ -17,7 +17,7 @@ def transform_ast_for_d5(ast: dict):
 
 
 def main():
-    src_test = 'not a * a'
+    src_test = 'let f = lambda n . if n == 0.0 then 1 else n * f on avg on n - 1, n, n + 1 in f 4;'
     scanner = QuarkScanner(src_test)
     tokens = scanner.tokens()
     parser = QuarkParser(tokens)

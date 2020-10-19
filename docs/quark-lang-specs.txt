@@ -14,7 +14,7 @@ Fun_Expr -> "fun" ID "with" ID_List "=" Expr_List "in" Expr
 
 Lambda_Expr -> "lambda" ID_List "." Expr
 
-If_then_Expr -> "if" Expr "then" Expr "else" Expr
+If_Then_Expr -> "if" Expr "then" Expr "else" Expr
 
 Application_Expr -> Expr "on" Expr_List
 
@@ -55,6 +55,7 @@ Term_Expr_Rhs -> "*"  Factor_Expr Term_Expr_Rhs
                | "/"  Factor_Expr Term_Expr_Rhs
                | "//" Factor_Expr Term_Expr_Rhs
                | "%"  Factor_Expr Term_Expr_Rhs
+               | "/%"  Factor_Expr Term_Expr_Rhs
                | ε
 
 Factor_Expr -> "+" Factor_Expr
@@ -91,8 +92,10 @@ Expr_List_Rhs -> "," Expr Expr_List_Rhs
 
 ID_List -> ID ID_List_Rhs
 
-ID_List_Rhs _> "," ID_List_Rhs
+ID_List_Rhs _> "," ID ID_List_Rhs
            	 | ε
+
+LEXEMES = ID | NUMBER | STRING | OPERATOR | KEYWORD | SEPARATORS
 
 String_Concat -> STRING String_Concat_Rhs
 

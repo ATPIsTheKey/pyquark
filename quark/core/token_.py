@@ -4,8 +4,7 @@ from typing import Tuple, Union
 
 __all__ = [
     'TokenTypes', 'Token', 'tokens', 'simple_single_char_tokens', 'common_prefix_tokens',
-    'simple_double_char_tokens',
-    'keyword_tokens'
+    'simple_double_char_tokens', 'keyword_tokens', 'get_token_type_precedence'
 ]
 
 
@@ -50,6 +49,7 @@ tok_type_names = (
     'COLON',
     'DOUBLE_COLON',
     'AT',
+    'ON',
     'AMPERSAND',
     'COMMA',
     'LESS',
@@ -73,7 +73,6 @@ tok_type_names = (
     'IN',
     'LAMBDA',
     'FUN',
-    'ON',
     'keyword_end',
 
     # Separator tokens
@@ -222,6 +221,40 @@ tokens = {
 }
 
 
+def get_token_type_precedence(type_: TokenTypes) -> int:
+    if type_ in (TokenTypes.OR, TokenTypes.XOR):
+        return 1
+    elif type_ == TokenTypes.AND:
+        return 2
+    elif type_ == TokenTypes.NOT:
+        return 3
+    elif type_ in (
+        TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER,
+        TokenTypes.LESS, TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
+    ):
+        return 4
+    elif type_ in (TokenTypes.PLUS, TokenTypes.MINUS):
+        return 5
+    elif type_ in (
+        TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.PERCENT
+    ):
+        return 6
+    elif type_ == TokenTypes.DOUBLE_STAR:
+        return 7
+    elif type_ == TokenTypes.NIL:
+        return 8
+    elif type_ in (
+        TokenTypes.CAR, TokenTypes.CDR
+    ):
+        return 9
+    elif type_ == TokenTypes.VERTICAL_BAR:
+        return 10
+    elif type_ == TokenTypes.ON:
+        return 11
+    else:
+        return -1  # default
+
+
 class Token:
     def __init__(self, type_: TokenTypes, value: Union[str, int, float, complex], pos: Tuple[int, int]):
         self.value = value
@@ -251,35 +284,7 @@ class Token:
 
     @property
     def precedence(self):
-        if self.type in (TokenTypes.OR, TokenTypes.XOR):
-            return 1
-        elif self.type == TokenTypes.AND:
-            return 2
-        elif self.type == TokenTypes.NOT:
-            return 3
-        elif self.type in (
-            TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER,
-            TokenTypes.LESS, TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
-        ):
-            return 4
-        elif self.type in (TokenTypes.PLUS, TokenTypes.MINUS):
-            return 5
-        elif self.type in (
-            TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.PERCENT
-        ):
-            return 6
-        elif self.type == TokenTypes.DOUBLE_STAR:
-            return 7
-        elif self.type == TokenTypes.NIL:
-            return 8
-        elif self.type in (
-            TokenTypes.CAR, TokenTypes.CDR
-        ):
-            return 9
-        elif self.type == TokenTypes.VERTICAL_BAR:
-            return 10
-        else:
-            return self._lowest_precedence
+        return get_token_type_precedence(self.type)
 
     def __str__(self):
         return f'<{self.type.name}>: {repr(self.value)} at {self.pos}'
