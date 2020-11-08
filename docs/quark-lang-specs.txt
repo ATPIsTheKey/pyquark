@@ -1,106 +1,84 @@
-Program -> Expr ";" Program
-         | ε
+Program -> Statement_List
 
-Expr -> Let_Expr
-      | Fun_Expr
-      | Lambda_Expr
-      | If_Then_Expr
-      | Application_Expr
-      | Logical_Expr
+Statement_List -> Statement ";" ( Statement_List )*
 
-Let_Expr -> "let" ID "=" Expr "in"  Expr
+Statement -> Import_Statement | Export_Statement | Assignment_Statement | Expression
 
-Fun_Expr -> "fun" ID "with" ID_List "=" Expr_List "in" Expr
+Import_Statement -> "import" ID_List [ "as" ID_List ]
 
-Lambda_Expr -> "lambda" ID_List "." Expr
+Export_Statement -> "export" ID_List [ "as" ID_List ]
 
-If_Then_Expr -> "if" Expr "then" Expr "else" Expr
+Assignment_Statement -> ID "=" Expression
 
-Application_Expr -> Expr "on" Expr_List
+Expression -> Let_Expression | Fun_Expression | Lambda_Expression | Conditional_Expression | Application_Expression | Logical_Expression
 
-Logical_Expr -> Or_Expr
+Let_Expression -> "let" ID_List "=" Expression_list "in"  Expression
 
-Or_Expr -> And_Expr Or_Expr_r
+Fun_Expression -> "fun" ID "with" ID_List "=" Applicable_Expression "in"  Expression
 
-Or_Expr_Rhs -> "or" And_Expr Or_Expr_Rhs
-             | ε
+Lambda_Expression -> "lambda" ID_List "." Expression
 
-And_Expr -> Not_Expr And_Expr_Rhs
+Conditional_Expression -> "if" Expression "then" Expression [ "else" Expression ]
 
-And_Expr_Rhs -> "and"  Not_Expr And_Expr_Rhs
-              | ε
+Application_Expression -> Expression "(" Expression_List ")"
 
-Not_Expr -> "not" Not_Expr
-          | Comp_Expr
+Function_Composition -> ID ( "@" ID )
 
-Comp_Expr -> Arith_Expr Comp_Expr_Rhs
+Logical_Expression -> Or_Expression
 
-Comp_Expr_Rhs -> "==" Arith_Expr Comp_Expr_Rhs
-               | "!=" Arith_Expr Comp_Expr_Rhs
-               | ">"  Arith_Expr Comp_Expr_Rhs
-               | ">=" Arith_Expr Comp_Expr_Rhs
-               | "<"  Arith_Expr Comp_Expr_Rhs
-               | "<=" Arith_Expr Comp_Expr_Rhs
-               | ε
+Or_Expression -> And_Expression Or_Expression_r
 
-Arith_Expr -> Term_Expr Arith_Expr_Rhs
+Or_Expression_Rhs -> ( "xor" | "or" ) And_Expression Or_Expression_Rhs | ε
 
-Arith_Expr_Rhs -> "+" Term_Expr Arith_Expr_Rhs
-                | "-" Term_Expr Arith_Expr_Rhs
-                | ε
+And_Expression -> Not_Expression And_Expression_Rhs
 
-Term_Expr -> Factor_Expr Term_Expr_Rhs
+And_Expression_Rhs -> "and"  Not_Expression And_Expression_Rhs | ε
 
-Term_Expr_Rhs -> "*"  Factor_Expr Term_Expr_Rhs
-               | "/"  Factor_Expr Term_Expr_Rhs
-               | "//" Factor_Expr Term_Expr_Rhs
-               | "%"  Factor_Expr Term_Expr_Rhs
-               | "/%"  Factor_Expr Term_Expr_Rhs
-               | ε
+Not_Expression -> "not" Not_Expression | Comp_Expression
 
-Factor_Expr -> "+" Factor_Expr
-             | "-" Factor_Expr
-             | "~" Factor_Expr
-             | Power_Expr
+Comp_Expression -> Arith_Expression Comp_Expression_Rhs
 
-Power_Expr -> Nil_Expr Power_Expr_Rhs
+Comp_Expression_Rhs -> ( "==" | "!=" | ">=" | "<" | "<=" ) Arith_Expression Comp_Expression_Rhs | ε
 
-Power_Expr_Rhs -> "**" Power_Expr_Rhs
-          	    | ε
+Arith_Expression -> Term_Expression Arith_Expression_Rhs
 
-Nil_Expr -> "nil" Nil_Expr
-          | List_Expr
+Arith_Expression_Rhs -> ( "+" | "-" ) Term_Expression Arith_Expression_Rhs | ε
 
-List_Expr -> List_Access_Expr List_Expr_Rhs
+Term_Expression -> Factor_Expression Term_Expression_Rhs
 
-List_Expr_Rhs -> "|" List_Access_Expr List_Expr_Rhs
-		       | ε
+Term_Expression_Rhs -> ( "*" | "/" | "//" | "%" | "/%" )  Factor_Expression Term_Expression_Rhs | ε
 
-List_Access_Expr -> "car" List_Access_Expr
-			 	  | "cdr" List_Access_Expr
-          	 	  | Atom_Expr
+Factor_Expression -> ( "+" | "-" | "~" ) Factor_Expression | Power_Expression
 
-Atom_Expr -> "(" Expr_List ")"
-      	   | String_Concat
-           | NUMBER
-           | ID
+Power_Expression -> Nil_Expression Power_Expression_Rhs
 
-Expr_List -> Expr Expr_List_Rhs
+Power_Expression_Rhs -> "**" Power_Expression_Rhs | ε
 
-Expr_List_Rhs -> "," Expr Expr_List_Rhs
-			   | ε
+Nil_Expression -> "nil" Nil_Expression | List_Expression
+
+List_Expression -> List_Access_Expression List_Expression_Rhs
+
+List_Expression_Rhs -> "|" List_Access_Expression List_Expression_Rhs | ε
+
+List_Access_Expression -> ( "tail" | "head" ) List_Access_Expression | Atom_Expression
+
+Atom_Expression -> "(" Expression ")" | LITERAL
+
+Expression_List -> Expression Expression_List_Rhs
+
+Expression_List_Rhs -> "," Expression Expression_List_Rhs | ε
 
 ID_List -> ID ID_List_Rhs
 
-ID_List_Rhs _> "," ID ID_List_Rhs
-           	 | ε
+ID_List_Rhs _> "," ID ID_List_Rhs | ε
 
-LEXEMES = ID | NUMBER | STRING | OPERATOR | KEYWORD | SEPARATORS
+Const_Prefixed_ID_List -> [ "const" ] ID ID_List_Rhs
 
-String_Concat -> STRING String_Concat_Rhs
+Const_Prefixed_ID_List_Rhs -> "," ID Const_Prefixed_ID_List_Rhs | ε
 
-String_Concat_Rhs -> STRING String_Concat_Rhs
-                 | ε
+LITERAL -> ID | NUMBER | STRING
+
+LEXEME -> ID | NUMBER | STRING | OPERATOR | KEYWORD | SEPARATOR
 
 ID -> [a-zA-Z_$]+[a-zA-Z0-9_$]*
 
@@ -108,13 +86,11 @@ COMMENT -> #1(#+|\n)
 
 STRING -> \"[^\"\n]*\"
 
-NUMBER -> INTEGER
-        | REAL
-        | COMPLEX
+NUMBER -> INTEGER | REAL | COMPLEX
 
 INTEGER -> ([1-9]+[0-9]*|0+)
 
-REAL -> [INTEGER] "." INTEGER
+REAL -> [ INTEGER ] "." INTEGER | INTEGER "." [ INTEGER ]
 
 COMPLEX -> REAL "im"
 
@@ -146,18 +122,21 @@ KEYWORD ->  "if"
           | "else"
           | "with"
           | "let"
+          | "const"
           | "lambda"
           | "with"
           | "fun"
           | "cout"
           | "cin"
 
-SEPARATORS -> ","
-            | "."
-            | "{"
-            | "}"
-            | "("
-            | ")"
-            | "["
-            | "]"
-            | ";"
+SKIPPABLE = ( "\n" | "\s" | "\t" ) SKIPPABLE | ε
+
+SEPARATOR -> ","
+           | "."
+           | "{"
+           | "}"
+           | "("
+           | ")"
+           | "["
+           | "]"
+           | ";"

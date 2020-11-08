@@ -3,6 +3,11 @@ from quark.core.token_ import Token, TokenTypes, keyword_tokens
 from typing import List, Tuple, Union
 
 
+__all__ = [
+    'QuarkScanner', 'QuarkScannerError'
+]
+
+
 class QuarkScannerError(Exception):
     def __init__(self, message):
         super().__init__(message)
@@ -21,13 +26,7 @@ class QuarkScanner:
         self._column_pos, self._line_pos = 0, 0
 
     def reset(self, source: str, ignore_skippables=True):
-        self._source = source
-
-        self._ignore_skippables = ignore_skippables
-
-        self._source_len = len(source)
-        self._source_start, self._source_pos = 0, 0
-        self._column_pos, self._line_pos = 0, 0
+        self.__init__(source, ignore_skippables)
 
     @property
     def _pos(self) -> Tuple[int, int]:
@@ -154,8 +153,10 @@ class QuarkScanner:
             else:
                 token_type = TokenTypes.PERIOD
         elif self._is_num_char():
-            must_be_real = self._current_char == '0'
-            self._consume_char()
+            if must_be_real := self._current_char == '0':
+                self._consume_char()
+                if not self._is_num_char() and self._current_char != '.':
+                    return Token(TokenTypes.INTEGER, self._consumed_chars, self._pos)
             while self._is_num_char():
                 self._consume_char()
             if must_be_real:
@@ -202,11 +203,17 @@ class QuarkScanner:
                 token_type = TokenTypes.DOUBLE_STAR
             else:
                 token_type = TokenTypes.STAR
+        elif self._match('%'):
+            self._consume_char()
+            token_type = TokenTypes.PERCENT
         elif self._match('/'):
             self._consume_char()
             if self._match('/'):
                 self._consume_char()
                 token_type = TokenTypes.DOUBLE_SLASH
+            elif self._match('%'):
+                self._consume_char()
+                token_type = TokenTypes.SLASH_PERCENT
             else:
                 token_type = TokenTypes.SLASH
         elif self._match('@'):

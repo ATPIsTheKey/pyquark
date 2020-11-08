@@ -1,12 +1,21 @@
-class List:
-    def __init__(self):
-        pass
+from quark.core.util.pytypehints import LiteralType
+from quark.core.util.datastructs import FlattenedPair
 
-    def car(self):
-        pass
+from typing import Union, Tuple
 
-    def cdr(self) -> 'List':
-        pass
 
-    def concat(self):
-        pass
+class ListObject(FlattenedPair):
+    def __init__(self, head: LiteralType, tail: Union['ListObject', None]):
+        super().__init__(head, tail)
+
+    @property
+    def head(self):
+        return self._left
+
+    @property
+    def tail(self):
+        return self._right
+
+    @property
+    def is_nil(self):
+        raise NotImplementedError

@@ -1,2 +1,11 @@
 - Scanner in deadloop on input 'let y = 2 in "sin on y;'
-- Make application term in let expressions optional
+- fix imports and type hinting
+- Implement better syntax warnings
+- implement partial evaluation of expressions
+- Rewrite the scanner
+- Implement function composition
+- Implement map, fold and filter
+- Try to minimise type checks of objects by directly returning whether execution result is Expression or not
+- debug interpreter on (lambda x . lambda y . x + y) on 1, 2
+- debug parser on let a, b = 2, 3 in a * b == let a = 2 in let b = 3 in a * b
+- implement caching for ast.execute() calls

@@ -1,2 +1,2 @@
-class Reak(float):  # todo: once math library developed, implement own type
+class RealObject(float):  # todo: once math library developed, implement own type
     pass

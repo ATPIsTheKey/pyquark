@@ -1,2 +1,2 @@
-class String(str):  # todo: implement own type
+class StringObject(str):  # todo: implement own type
     pass

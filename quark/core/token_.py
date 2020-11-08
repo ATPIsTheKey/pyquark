@@ -29,23 +29,26 @@ tok_type_names = (
     # Operator tokens
     'operator_beg',
 
-    # Unary operators
-    'unary_operator_beg',
-    'PLUS',
-    'MINUS',
+    'strictly_unary_operator_beg',
     'TILDE',
     'XOR',
-    'CAR',
-    'CDR',
+    'HEAD',
+    'TAIL',
     'NIL',
     'NOT',
-    'unary_operator_end',
+    'strictly_unary_operator_end',
+
+    'unary_binary_operator_beg',
+    'PLUS',
+    'MINUS',
+    'unary_binary_operator_end',
 
     'PERCENT',
     'STAR',
     'DOUBLE_STAR',
     'SLASH',
     'DOUBLE_SLASH',
+    'SLASH_PERCENT',
     'COLON',
     'DOUBLE_COLON',
     'AT',
@@ -69,10 +72,14 @@ tok_type_names = (
     'THEN',
     'ELSE',
     'LET',
+    'CONST',
     'WITH',
     'IN',
     'LAMBDA',
     'FUN',
+    'IMPORT',
+    'EXPORT',
+    'AS',
     'keyword_end',
 
     # Separator tokens
@@ -127,6 +134,7 @@ common_prefix_tokens = {
     ),
     '/': (
         ('//', TokenTypes.DOUBLE_SLASH),
+        ('/%', TokenTypes.SLASH_PERCENT),
         ('/', TokenTypes.SLASH)
     ),
     '<': (
@@ -157,18 +165,22 @@ keyword_tokens = {
     'and': TokenTypes.AND,
     'or': TokenTypes.OR,
     'xor': TokenTypes.XOR,
-    'car': TokenTypes.CAR,
-    'cdr': TokenTypes.CDR,
+    'head': TokenTypes.HEAD,
+    'tail': TokenTypes.TAIL,
     'nil': TokenTypes.NIL,
     'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
     'else': TokenTypes.ELSE,
     'let': TokenTypes.LET,
+    'const': TokenTypes.CONST,
     'with': TokenTypes.WITH,
     'in': TokenTypes.IN,
     'on': TokenTypes.ON,
+    'as': TokenTypes.AS,
     'lambda': TokenTypes.LAMBDA,
     'fun': TokenTypes.FUN,
+    'import': TokenTypes.IMPORT,
+    'export': TokenTypes.EXPORT
 }
 
 
@@ -198,6 +210,7 @@ tokens = {
     '**': TokenTypes.DOUBLE_STAR,
     '::': TokenTypes.DOUBLE_COLON,
     '//': TokenTypes.DOUBLE_SLASH,
+    '/%': TokenTypes.SLASH_PERCENT,
     '<=': TokenTypes.LESS_EQUAL,
     '>=': TokenTypes.GREATER_EQUAL,
     '==': TokenTypes.DOUBLE_EQUAL,
@@ -206,16 +219,18 @@ tokens = {
     'and': TokenTypes.AND,
     'or': TokenTypes.OR,
     'xor': TokenTypes.XOR,
-    'car': TokenTypes.CAR,
-    'cdr': TokenTypes.CDR,
+    'head': TokenTypes.HEAD,
+    'tail': TokenTypes.TAIL,
     'nil': TokenTypes.NIL,
     'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
     'else': TokenTypes.ELSE,
-    'with': TokenTypes.WITH,
+    'let': TokenTypes.LET,
     'in': TokenTypes.IN,
     'lambda': TokenTypes.LAMBDA,
     'fun': TokenTypes.FUN,
+    'with': TokenTypes.WITH,
+    'const': TokenTypes.CONST,
     ' ': TokenTypes.SPACE,
     '\t': TokenTypes.TAB
 }
@@ -229,14 +244,14 @@ def get_token_type_precedence(type_: TokenTypes) -> int:
     elif type_ == TokenTypes.NOT:
         return 3
     elif type_ in (
-        TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER,
-        TokenTypes.LESS, TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
+        TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER, TokenTypes.LESS,
+        TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
     ):
         return 4
     elif type_ in (TokenTypes.PLUS, TokenTypes.MINUS):
         return 5
     elif type_ in (
-        TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.PERCENT
+        TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.SLASH_PERCENT, TokenTypes.PERCENT
     ):
         return 6
     elif type_ == TokenTypes.DOUBLE_STAR:
@@ -244,7 +259,7 @@ def get_token_type_precedence(type_: TokenTypes) -> int:
     elif type_ == TokenTypes.NIL:
         return 8
     elif type_ in (
-        TokenTypes.CAR, TokenTypes.CDR
+        TokenTypes.HEAD, TokenTypes.TAIL
     ):
         return 9
     elif type_ == TokenTypes.VERTICAL_BAR:
@@ -256,13 +271,10 @@ def get_token_type_precedence(type_: TokenTypes) -> int:
 
 
 class Token:
-    def __init__(self, type_: TokenTypes, value: Union[str, int, float, complex], pos: Tuple[int, int]):
-        self.value = value
+    def __init__(self, type_: TokenTypes, value: str, pos: Tuple[int, int]):
+        self.val = value
         self.type = type_
         self.pos = pos
-
-        self._lowest_precedence = 0
-        self._highest_precedence = 10
 
     def is_special(self) -> bool:
         return TokenTypes.special_beg < self.type < TokenTypes.special_end
@@ -274,7 +286,15 @@ class Token:
         return TokenTypes.operator_beg < self.type < TokenTypes.operator_end
 
     def is_unary_operator(self) -> bool:
-        return TokenTypes.unary_operator_beg < self.type < TokenTypes.unary_oeprator_end
+        return TokenTypes.strictly_unary_operator_beg < self.type < TokenTypes.strictly_unary_operator_end
+
+    def is_left_associative(self) -> bool:
+        return not self.is_right_associative()
+
+    def is_right_associative(self) -> bool:
+        return self.type in (
+            TokenTypes.VERTICAL_BAR, TokenTypes.DOUBLE_STAR
+        ) or self.is_unary_operator()
 
     def is_keyword(self) -> bool:
         return TokenTypes.keyword_beg < self.type < TokenTypes.keyword_end
@@ -287,7 +307,7 @@ class Token:
         return get_token_type_precedence(self.type)
 
     def __str__(self):
-        return f'<{self.type.name}>: {repr(self.value)} at {self.pos}'
+        return f'<{self.type.name}>: {repr(self.val)} at {self.pos}'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.__str__()})'
@@ -296,8 +316,8 @@ class Token:
         return self.type == other.type
 
     def __hash__(self):
-        return hash((self.type, self.value, self.pos))
+        return hash((self.type, self.val, self.pos))
 
 
 if __name__ == '__main__':
-    print(tokens)
+    pass
