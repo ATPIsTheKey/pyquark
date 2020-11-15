@@ -91,7 +91,6 @@ class QuarkParser:
         statement_list = StatementList()
         while not self._reached_end_of_source:
             statement_list.append(t := self._parse_statement())
-            print(t)
             self._expect(TokenTypes.SEMICOLON)
             self._consume_token()
         return statement_list
@@ -334,7 +333,8 @@ class QuarkParser:
 
     @staticmethod
     def _desugar_application_expression(
-            function_expression: AtomExpression, arguments: ExpressionList) -> ApplicationExpression:
+            function_expression: AtomExpression, arguments: ExpressionList
+    ) -> ApplicationExpression:
         expr = ApplicationExpression(function_expression, arguments[0])
         for arg in arguments[1:]:
             expr = ApplicationExpression(expr, arg)
@@ -392,15 +392,5 @@ class QuarkParser:
                 self._consume_token()
         return id_list
 
-    def build_ast(self) -> AnyExpressionType:
+    def build_parse_tree(self) -> AnyExpressionType:
         return self._parse_statement_list()
-
-
-if __name__ == '__main__':
-    src_test = 'a;'
-    lexer = QuarkScanner(src_test)
-    parser = QuarkParser(lexer.tokens())
-    while test := input('>>> '):
-        lexer.reset(test)
-        parser.reset(lexer.tokens())
-        print(parser.build_ast().node_json_repr)

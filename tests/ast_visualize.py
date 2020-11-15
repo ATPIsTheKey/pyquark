@@ -9,7 +9,7 @@ def main():
     scanner = QuarkScanner(src_test)
     tokens = scanner.tokens()
     parser = QuarkParser(tokens)
-    parse_tree = parser.build_ast()
+    parse_tree = parser.build_parse_tree()
     print(
         json.dumps(parse_tree.node_dict_repr())
     )
