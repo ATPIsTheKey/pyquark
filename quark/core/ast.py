@@ -9,8 +9,6 @@ from quark.core.runtime.integer import IntegerObject
 from quark.core.runtime.real import RealObject
 from quark.core.runtime.complex import ComplexObject
 from quark.core.runtime.string import StringObject
-from quark.core.runtime.operations import execute_unary_operation_from_token_type, \
-    execute_binary_operation_from_token_type
 
 import abc
 from typing import Union, Tuple, List, Callable, Any
@@ -19,7 +17,13 @@ import json
 __all__ = [
     'StatementList', 'ImportStatement', 'ExportStatement', 'LetExpression', 'LambdaExpression',
     'ConditionalExpression', 'ApplicationExpression', 'BinaryExpression', 'UnaryExpression', 'AtomExpression',
-    'ExpressionList', 'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType'
+    'ExpressionList', 'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType', 'ConditionalBranch',
+    'ListExpression'
+]
+
+AnyAstNodeType = Union[
+    'LetExpression', 'FunExpression', 'LambdaExpression', 'IfThenElseExpression', 'ApplicationExpression',
+    'BinaryExpression', 'UnaryExpression', 'ExpressionList', 'ImportStatement', 'ExportStatement', 'AnyExpressionType'
 ]
 
 AnyExpressionType = Union[
@@ -145,73 +149,101 @@ class LetExpression(Expression):
 
 
 class LambdaExpression(Expression):
-    def __init__(self, bound_identifier: 'Token', body_expression: AnyExpressionType):
-        self.bound_variable = bound_identifier
+    def __init__(self, bound_identifiers: 'IdList', body_expression: AnyExpressionType):
+        self.bound_variables = bound_identifiers
         self.body_expression = body_expression
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return {self.bound_variable} | self.body_expression.free_variables
+        return set(self.bound_variables) | self.body_expression.free_variables
+
+    @functools.cached_property
+    def as_desugared_expression(self) -> 'LambdaExpression':
+        inner_expr = LambdaExpression(IdList([self.bound_variables[-1]]), self.body_expression)
+        for bound_var in reversed(self.bound_variables[:-1]):
+            inner_expr = LambdaExpression(IdList([bound_var]), inner_expr)
+        return inner_expr
 
     def __repr__(self):
-        return f"lambda {', '.join(self.bound_variable.val)} . {self.body_expression.__repr__()}"
+        return f"\\{', '.join(var.val for var in self.bound_variables)} . {self.body_expression.__repr__()}"
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'bound_variable': self.bound_variable.val,
+            'bound_variable': self.bound_variables.node_dict_repr,
             'body_expression': self.body_expression.node_dict_repr
         }
 
 
-class ConditionalExpression(Expression):
-    def __init__(self, condition: AnyExpressionType, consequent: AnyExpressionType,
-                 alternative: Union[AnyExpressionType, None]):
+class ConditionalBranch(ASTNode):
+    def __init__(self, condition: AnyExpressionType, consequent: AnyExpressionType):
         self.condition = condition
         self.consequent = consequent
-        self.alternative = alternative
 
     @functools.cached_property
     def free_variables(self) -> set:
-        if self.alternative:
-            return self.condition.free_variables | self.consequent.free_variables | self.alternative.free_variables
-        else:
-            return self.condition.free_variables | self.consequent.free_variables
-
-    def __repr__(self):
-        return f'if {self.condition.__repr__()} then {self.consequent.__repr__()} else {self.alternative.__repr__()}'
+        return {self.condition.free_variables} | {self.consequent.free_variables}
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'condition': self.condition.node_dict_repr,
-            'consequent': self.consequent.node_dict_repr,
-            'alternative': self.alternative.node_dict_repr if self.alternative else None
+            'consequent': self.consequent.node_dict_repr
+        }
+
+
+class ConditionalExpression(Expression):
+    def __init__(self, branches: List[ConditionalBranch], fallback: Union['AnyExpressionType', None] = None):
+        self.branches = branches
+        self.fallback = fallback
+
+    @functools.cached_property
+    def free_variables(self) -> set:
+        if self.fallback:
+            return {branch.free_variables for branch in self.branches}
+
+    def __repr__(self):
+        fmt = f"cond {', '.join(f'{branch.condition.__repr__()} then {branch.consequent.__repr__()}' for branch in self.branches)}"
+        if self.fallback:
+            fmt += f' otherwise {self.fallback.__repr__()}'
+        return fmt
+
+    @property
+    def node_dict_repr(self) -> dict:
+        return {
+            'ast_node_name': self.__class__.__name__,
+            'branches': [branch.node_dict_repr for branch in self.branches],
+            'fallback': self.fallback.node_dict_repr if self.fallback else None
         }
 
 
 class ApplicationExpression(Expression):
-    def __init__(self, function: AnyExpressionType, argument_value: AnyExpressionType):
+    def __init__(self, function: AnyExpressionType, argument_values: 'ExpressionList'):
         self.function = function
-        self.argument_value = argument_value
+        self.argument_values = argument_values
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return self.function.free_variables | self.argument_value.free_variables
+        return self.function.free_variables | self.argument_values.free_variables
+
+    @functools.cached_property
+    def as_desugared_expression(self) -> 'ApplicationExpression':
+        inner_expr = ApplicationExpression(self.function, ExpressionList(self.argument_values[0:1]))
+        for arg in self.argument_values[1:]:
+            inner_expr = ApplicationExpression(ExpressionList([inner_expr]), ExpressionList([arg]))
+        return inner_expr
 
     def __repr__(self):
-        return f'{self.function.__repr__()} ' \
-               f'({", ".join(str(arg) for arg in self.argument_value.__repr__())})'
+        return f'{self.function.__repr__()}({", ".join(arg.__repr__() for arg in self.argument_values)})'
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'function': self.function.node_dict_repr,
-            'arguments': self.argument_value.node_dict_repr if isinstance(self.argument_value, Expression)
-            else self.argument_value.__repr__()
+            'arguments': self.argument_values.node_dict_repr
         }
 
 
@@ -266,6 +298,25 @@ class UnaryExpression(Expression):
             'ast_node_name': self.__class__.__name__,
             'operand': repr(self.operand),
             'expr': self.expr.node_dict_repr
+        }
+
+
+class ListExpression(Expression):
+    def __init__(self, items: List[AnyExpressionType]):
+        self.items = items
+
+    @functools.cached_property
+    def free_variables(self) -> set:
+        return {item.free_variables for item in self.items}
+
+    def __repr__(self):
+        return f"[{', '.join(item.__repr__() for item in self.items)}]"
+
+    @property
+    def node_dict_repr(self) -> dict:
+        return {
+            'ast_node_name': self.__class__.__name__,
+            'exprs': [item.node_dict_repr for item in self.items]
         }
 
 

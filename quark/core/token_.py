@@ -80,6 +80,8 @@ tok_type_names = (
     'IMPORT',
     'EXPORT',
     'AS',
+    'COND',
+    'OTHERWISE',
     'keyword_end',
 
     # Separator tokens
@@ -95,6 +97,7 @@ tok_type_names = (
     'QUOTE',
     'ELLIPSIS',
     'SEMICOLON',
+    'BACKSLASH',
     'VERTICAL_BAR',
     'SPACE',
     'TAB',
@@ -112,6 +115,7 @@ simple_single_char_tokens = {
     '%': TokenTypes.PERCENT,
     '@': TokenTypes.AT,
     '&': TokenTypes.AMPERSAND,
+    '\\': TokenTypes.BACKSLASH,
     ',': TokenTypes.COMMA,
     '.': TokenTypes.PERIOD,
     '{': TokenTypes.LEFT_CURLY_BRACKET,
@@ -124,7 +128,7 @@ simple_single_char_tokens = {
     '~': TokenTypes.TILDE,
     '"': TokenTypes.QUOTE,
     ';': TokenTypes.SEMICOLON,
-    '\n': TokenTypes.NEWLINE
+    '\n': TokenTypes.NEWLINE,
 }
 
 common_prefix_tokens = {
@@ -168,7 +172,7 @@ keyword_tokens = {
     'head': TokenTypes.HEAD,
     'tail': TokenTypes.TAIL,
     'nil': TokenTypes.NIL,
-    'if': TokenTypes.IF,
+    'cond': TokenTypes.COND,
     'then': TokenTypes.THEN,
     'else': TokenTypes.ELSE,
     'let': TokenTypes.LET,
@@ -180,7 +184,8 @@ keyword_tokens = {
     'lambda': TokenTypes.LAMBDA,
     'fun': TokenTypes.FUN,
     'import': TokenTypes.IMPORT,
-    'export': TokenTypes.EXPORT
+    'export': TokenTypes.EXPORT,
+    'otherwise': TokenTypes.OTHERWISE
 }
 
 
@@ -190,6 +195,7 @@ tokens = {
     '%': TokenTypes.PERCENT,
     '*': TokenTypes.STAR,
     '/': TokenTypes.SLASH,
+    '\\': TokenTypes.BACKSLASH,
     '@': TokenTypes.AT,
     '&': TokenTypes.AMPERSAND,
     '<': TokenTypes.LESS,
@@ -231,6 +237,8 @@ tokens = {
     'fun': TokenTypes.FUN,
     'with': TokenTypes.WITH,
     'const': TokenTypes.CONST,
+    'cond': TokenTypes.COND,
+    'otherwise': TokenTypes.OTHERWISE,
     ' ': TokenTypes.SPACE,
     '\t': TokenTypes.TAB
 }

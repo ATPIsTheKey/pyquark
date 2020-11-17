@@ -206,6 +206,9 @@ class QuarkScanner:
         elif self._match('%'):
             self._consume_char()
             token_type = TokenTypes.PERCENT
+        elif self._match("\\"):
+            self._consume_char()
+            token_type = TokenTypes.BACKSLASH
         elif self._match('/'):
             self._consume_char()
             if self._match('/'):
@@ -303,7 +306,7 @@ class QuarkScanner:
 
 
 if __name__ == '__main__':
-    lexer = QuarkScanner('let a = 234 in a * a')
+    lexer = QuarkScanner('a')
     while test := input('>>> '):
         lexer.reset(test)
         print(

@@ -1,9 +1,9 @@
 from quark.core.token_ import TokenTypes, Token
 from quark.core.scanner import QuarkScanner
 from quark.core.ast import (
-    LetExpression, LambdaExpression, ConditionalExpression, ApplicationExpression, BinaryExpression,
-    UnaryExpression, AtomExpression, ExpressionList, IdList, StatementList, ImportStatement, ExportStatement,
-    AssignmentStatement
+    LetExpression, LambdaExpression, ConditionalExpression, ApplicationExpression,
+    BinaryExpression, UnaryExpression, AtomExpression, ExpressionList, IdList, StatementList, ImportStatement,
+    ExportStatement, AssignmentStatement, ConditionalBranch, ListExpression
 )
 
 
@@ -142,12 +142,12 @@ class QuarkParser:
     def _parse_expression(self) -> AnyExpressionType:
         if self._match(TokenTypes.LET):
             return self._parse_let_expression()
-        elif self._match(TokenTypes.FUN):
-            return self._parse_fun_expression()
-        elif self._match(TokenTypes.IF):
+        elif self._match(TokenTypes.COND):
             return self._parse_conditional_expression()
-        elif self._match(TokenTypes.LAMBDA):
+        elif self._match(TokenTypes.BACKSLASH):
             return self._parse_lambda_expression()
+        elif self._match(TokenTypes.LEFT_BRACKET):
+            return self._parse_list_expression()
         else:
             expr = self._parse_logical_arithmetic_expression()  # begin with default precedence
             if self._match(TokenTypes.LEFT_PARENTHESIS):
@@ -171,60 +171,46 @@ class QuarkParser:
         body_expressions = self._parse_expression()
         return LetExpression(bound_identifiers, initialiser_expressions, body_expressions)
 
-    def _parse_fun_expression(self) -> LetExpression:
-        """
-        Function expressions are syntactic sugar for let expressions with a lambda expression as an initialiser
-        expression. Hence, when parsing a function expression, return the desugared let expression for the ast.
-        """
-        self._expect(TokenTypes.FUN)
-        self._consume_token()
-        self._expect(TokenTypes.ID)
-        name = self._current_token
-        self._consume_token()
-        self._expect(TokenTypes.WITH)
-        self._consume_token()
-        argument_names = self._parse_id_list()
-        self._expect(TokenTypes.EQUAL)
-        self._consume_token()
-        function_body_expression = self._parse_expression()
-        self._expect(TokenTypes.IN)
-        self._consume_token()
-        body_expression = self._parse_expression()
-        return LetExpression(
-            IdList([name]),
-            ExpressionList([self._desugar_lambda_expression(argument_names, function_body_expression)]),
-            body_expression
-        )
-
-    def _desugar_lambda_expression(self, bound_variables: 'IdList', body_expression: 'AnyExpressionType') -> LambdaExpression:
-        return LambdaExpression(
-            bound_variables[0], self._desugar_lambda_expression(
-                bound_variables[1:], body_expression
-            ) if len(bound_variables) > 1 else body_expression
-        )
-
     def _parse_lambda_expression(self) -> LambdaExpression:
-        self._expect(TokenTypes.LAMBDA)
+        self._expect(TokenTypes.BACKSLASH)
         self._consume_token()
         bound_variables = self._parse_id_list()
         self._expect(TokenTypes.PERIOD)
         self._consume_token()
         body_expression = self._parse_expression()
-        return self._desugar_lambda_expression(bound_variables, body_expression)
+        return LambdaExpression(bound_variables, body_expression)
 
     def _parse_conditional_expression(self) -> ConditionalExpression:
-        self._expect(TokenTypes.IF)
+        self._expect(TokenTypes.COND)
         self._consume_token()
-        condition = self._parse_expression()
-        self._expect(TokenTypes.THEN)
-        self._consume_token()
-        consequent = self._parse_expression()
-        if self._match(TokenTypes.ELSE):
+        branches = []
+        got_comma = True
+        while got_comma:
+            condition = self._parse_expression()
+            self._expect(TokenTypes.THEN)
             self._consume_token()
-            alternative = self._parse_expression()
+            consequent = self._parse_expression()
+            branches.append(ConditionalBranch(condition, consequent))
+            if got_comma := self._match(TokenTypes.COMMA):
+                self._consume_token()
+        if self._match(TokenTypes.OTHERWISE):
+            self._consume_token()
+            return ConditionalExpression(branches, fallback=self._parse_expression())
         else:
-            alternative = None
-        return ConditionalExpression(condition, consequent, alternative)
+            return ConditionalExpression(branches, None)
+
+    def _parse_list_expression(self) -> ListExpression:
+        self._expect(TokenTypes.LEFT_BRACKET)
+        self._consume_token()
+        items = []
+        got_comma = True
+        while got_comma:
+            items.append(self._parse_expression())
+            if got_comma := self._match(TokenTypes.COMMA):
+                self._consume_token()
+        self._expect(TokenTypes.RIGHT_BRACKET)
+        self._consume_token()
+        return ListExpression(items)
 
     @staticmethod
     def _restore_left_associativity(expr: BinaryExpression):  # todo: explain myself...
@@ -331,26 +317,17 @@ class QuarkParser:
         else:
             return self._parse_logical_arithmetic_expression(precedence + 1)
 
-    @staticmethod
-    def _desugar_application_expression(
-            function_expression: AtomExpression, arguments: ExpressionList
-    ) -> ApplicationExpression:
-        expr = ApplicationExpression(function_expression, arguments[0])
-        for arg in arguments[1:]:
-            expr = ApplicationExpression(expr, arg)
-        return expr
-
     def _parse_application_expression(self) -> Union[ApplicationExpression, AnyExpressionType]:
         expr = self._parse_atom_expression()
         if self._match(TokenTypes.AT):  # function composition
             self._consume_token()
-            return ApplicationExpression(expr, self._parse_application_expression())
+            return ApplicationExpression(expr, ExpressionList([self._parse_application_expression()]))
         elif self._match(TokenTypes.LEFT_PARENTHESIS):
             self._consume_token()
             arguments = self._parse_expression_list()
             self._expect(TokenTypes.RIGHT_PARENTHESIS)
             self._consume_token()
-            return self._desugar_application_expression(expr, arguments)
+            return ApplicationExpression(expr, arguments)
         else:
             return expr
 
