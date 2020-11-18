@@ -1,11 +1,14 @@
 - Scanner in deadloop on input 'let y = 2 in "sin on y;'
 - fix imports and type hinting
 - Implement better syntax warnings
-- implement partial evaluation of expressions
 - Rewrite the scanner
-- Implement function composition
 - Implement map, fold and filter
-- Try to minimise type checks of objects by directly returning whether execution result is Expression or not
 - debug interpreter on (lambda x . lambda y . x + y) on 1, 2
-- debug parser on let a, b = 2, 3 in a * b == let a = 2 in let b = 3 in a * b
 - implement caching for ast.execute() calls
+- implement function application by argument juxtaposition
+- reimplement caching by converting sets to tuples so they can be hashed
+- make intersection code nicer
+- debug
+    let a = let b = 2 in b in c
+    let b = 2 in b
+for bound_variable code
