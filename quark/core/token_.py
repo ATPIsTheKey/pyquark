@@ -24,6 +24,7 @@ tok_type_names = (
     'REAL',
     'COMPLEX',
     'STRING',
+    'BOOLEAN',
     'literal_end',
     
     # Operator tokens
@@ -70,6 +71,7 @@ tok_type_names = (
     'keyword_beg',
     'IF',
     'THEN',
+    'ELIF',
     'ELSE',
     'LET',
     'CONST',
@@ -173,7 +175,9 @@ keyword_tokens = {
     'tail': TokenTypes.TAIL,
     'nil': TokenTypes.NIL,
     'cond': TokenTypes.COND,
+    'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
+    'elif': TokenTypes.ELIF,
     'else': TokenTypes.ELSE,
     'let': TokenTypes.LET,
     'const': TokenTypes.CONST,
@@ -230,6 +234,7 @@ tokens = {
     'nil': TokenTypes.NIL,
     'if': TokenTypes.IF,
     'then': TokenTypes.THEN,
+    'elif': TokenTypes.ELIF,
     'else': TokenTypes.ELSE,
     'let': TokenTypes.LET,
     'in': TokenTypes.IN,
@@ -280,7 +285,7 @@ def get_token_type_precedence(type_: TokenTypes) -> int:
 
 class Token:
     def __init__(self, type_: TokenTypes, value: str, pos: Tuple[int, int]):
-        self.val = value
+        self.raw = value
         self.type = type_
         self.pos = pos
 
@@ -315,7 +320,7 @@ class Token:
         return get_token_type_precedence(self.type)
 
     def __str__(self):
-        return f'<{self.type.name}>: {repr(self.val)} at {self.pos}'
+        return f'<{self.type.name}>: {repr(self.raw)} at {self.pos}'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.__str__()})'
@@ -324,7 +329,7 @@ class Token:
         return self.type == other.type
 
     def __hash__(self):
-        return hash((self.type, self.val, self.pos))
+        return hash((self.type, self.raw, self.pos))
 
 
 if __name__ == '__main__':

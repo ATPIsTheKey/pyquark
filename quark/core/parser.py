@@ -3,7 +3,7 @@ from quark.core.scanner import QuarkScanner
 from quark.core.ast import (
     LetExpression, LambdaExpression, ConditionalExpression, ApplicationExpression,
     BinaryExpression, UnaryExpression, AtomExpression, ExpressionList, IdList, StatementList, ImportStatement,
-    ExportStatement, AssignmentStatement, ConditionalBranch, ListExpression
+    ExportStatement, AssignmentStatement, ListExpression
 )
 
 
@@ -77,6 +77,7 @@ class QuarkParser:
                 f'SyntaxError: invalid syntax at {self._current_token.pos}. '
                 f'Expected any from {", ".join([t.name for t in token_types])}, '
                 f'got {self._current_token.type.name}'
+                f'Remaining tokens: {self._source_tokens[self._current_pos:]}'
             )
 
     def _expect(self, token_type: TokenTypes):
@@ -84,13 +85,14 @@ class QuarkParser:
             raise QuarkParserError(
                 f'SyntaxError: invalid syntax at {self._current_token.pos}. '
                 f'Expected {token_type.name}, '
-                f'got {self._current_token.type.name}'
+                f'got {self._current_token.type.name}. '
+                f'Remaining tokens: {self._source_tokens[self._current_pos:]}'
             )
 
     def _parse_statement_list(self) -> Union[StatementList, None]:
         statement_list = StatementList()
         while not self._reached_end_of_source:
-            statement_list.append(t := self._parse_statement())
+            statement_list.append(self._parse_statement())
             self._expect(TokenTypes.SEMICOLON)
             self._consume_token()
         return statement_list
@@ -142,7 +144,7 @@ class QuarkParser:
     def _parse_expression(self) -> AnyExpressionType:
         if self._match(TokenTypes.LET):
             return self._parse_let_expression()
-        elif self._match(TokenTypes.COND):
+        elif self._match(TokenTypes.IF):
             return self._parse_conditional_expression()
         elif self._match(TokenTypes.BACKSLASH):
             return self._parse_lambda_expression()
@@ -162,42 +164,53 @@ class QuarkParser:
     def _parse_let_expression(self) -> LetExpression:
         self._expect(TokenTypes.LET)
         self._consume_token()
-        bound_identifiers = self._parse_id_list()
+        binding_identifiers = self._parse_id_list()
         self._expect(TokenTypes.EQUAL)
         self._consume_token()
         initialiser_expressions = self._parse_expression_list()
         self._expect(TokenTypes.IN)
         self._consume_token()
-        body_expressions = self._parse_expression()
-        return LetExpression(bound_identifiers, initialiser_expressions, body_expressions)
+        body_expression = self._parse_expression()
+        return LetExpression(binding_identifiers, initialiser_expressions, body_expression)
+
+    def _make_desugared_lambda_expression(
+            self, binding_identifiers: List[str], body_expression: AnyExpressionType
+    ) -> LambdaExpression:
+        if binding_identifiers:
+            ret = LambdaExpression(
+                binding_identifiers[0],
+                self._make_desugared_lambda_expression(binding_identifiers[1:], body_expression)
+            )
+            return ret
+        else:
+            return body_expression
 
     def _parse_lambda_expression(self) -> LambdaExpression:
         self._expect(TokenTypes.BACKSLASH)
         self._consume_token()
-        bound_variables = self._parse_id_list()
+        binding_identifiers = self._parse_id_list()
         self._expect(TokenTypes.PERIOD)
         self._consume_token()
         body_expression = self._parse_expression()
-        return LambdaExpression(bound_variables, body_expression)
+        return self._make_desugared_lambda_expression(binding_identifiers, body_expression)
 
-    def _parse_conditional_expression(self) -> ConditionalExpression:
-        self._expect(TokenTypes.COND)
+    def _parse_conditional_expression(self, is_continuation=False) -> ConditionalExpression:
+        self._expect(TokenTypes.ELIF if is_continuation else TokenTypes.IF)
         self._consume_token()
-        branches = []
-        got_comma = True
-        while got_comma:
-            condition = self._parse_expression()
-            self._expect(TokenTypes.THEN)
+        condition = self._parse_expression()
+        self._expect(TokenTypes.THEN)
+        self._consume_token()
+        consequent = self._parse_expression()
+        if self._match(TokenTypes.ELSE):
             self._consume_token()
-            consequent = self._parse_expression()
-            branches.append(ConditionalBranch(condition, consequent))
-            if got_comma := self._match(TokenTypes.COMMA):
-                self._consume_token()
-        if self._match(TokenTypes.OTHERWISE):
-            self._consume_token()
-            return ConditionalExpression(branches, fallback=self._parse_expression())
+            alternative = self._parse_expression()
+            return ConditionalExpression(condition, consequent, alternative)
+        elif self._match(TokenTypes.ELIF):
+            return ConditionalExpression(
+                condition, consequent, self._parse_conditional_expression(is_continuation=True)
+            )
         else:
-            return ConditionalExpression(branches, None)
+            return ConditionalExpression(condition, consequent)
 
     def _parse_list_expression(self) -> ListExpression:
         self._expect(TokenTypes.LEFT_BRACKET)
@@ -286,7 +299,8 @@ class QuarkParser:
             return self._parse_unary_expression(
                 precedence, (TokenTypes.HEAD, TokenTypes.TAIL)
             )
-        return self._parse_application_expression()
+        else:
+            return self._parse_application_expression()
 
     def _parse_binary_expression(
             self, precedence: int, operators: Tuple[TokenTypes, ...], is_left_associative=False
@@ -318,18 +332,26 @@ class QuarkParser:
             return self._parse_logical_arithmetic_expression(precedence + 1)
 
     def _parse_application_expression(self) -> Union[ApplicationExpression, AnyExpressionType]:
-        expr = self._parse_atom_expression()
+        function = self._parse_atom_expression()
         if self._match(TokenTypes.AT):  # function composition
             self._consume_token()
-            return ApplicationExpression(expr, ExpressionList([self._parse_application_expression()]))
+            return ApplicationExpression(function, self._parse_application_expression())
         elif self._match(TokenTypes.LEFT_PARENTHESIS):
             self._consume_token()
             arguments = self._parse_expression_list()
             self._expect(TokenTypes.RIGHT_PARENTHESIS)
             self._consume_token()
-            return ApplicationExpression(expr, arguments)
-        else:
+            while self._match(TokenTypes.LEFT_PARENTHESIS):
+                self._consume_token()
+                arguments.extend(self._parse_expression_list())
+                self._expect(TokenTypes.RIGHT_PARENTHESIS)
+                self._consume_token()
+            expr = ApplicationExpression(function, arguments[0])
+            for arg in arguments[1:]:
+                expr = ApplicationExpression(expr, arg)
             return expr
+        else:
+            return function
 
     def _parse_atom_expression(self) -> Union[AtomExpression, ApplicationExpression]:
         if self._match(TokenTypes.LEFT_PARENTHESIS):
@@ -340,7 +362,7 @@ class QuarkParser:
             return ret
         elif self._match_any_from(TokenTypes.STRING, TokenTypes.INTEGER, TokenTypes.REAL,
                                   TokenTypes.ID, TokenTypes.COMPLEX):
-            ret = AtomExpression(self._current_token)
+            ret = AtomExpression(self._current_token.raw, self._current_token.type)
             self._consume_token()
             return ret
         else:
@@ -363,7 +385,7 @@ class QuarkParser:
         got_comma = True
         while got_comma and not self._reached_end_of_source:
             self._expect(TokenTypes.ID)
-            id_list.append(self._current_token)
+            id_list.append(self._current_token.raw)
             self._consume_token()
             if got_comma := self._match(TokenTypes.COMMA):
                 self._consume_token()
