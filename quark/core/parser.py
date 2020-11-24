@@ -72,7 +72,7 @@ class QuarkParser:
                 return True
 
     def _expect_any_from(self, *token_types: TokenTypes):
-        if not self._reached_end_of_source and not self._match_any_from(token_types):
+        if not self._reached_end_of_source and not self._match_any_from(*token_types):
             raise QuarkParserError(
                 f'SyntaxError: invalid syntax at {self._current_token.pos}. '
                 f'Expected any from {", ".join([t.name for t in token_types])}, '
@@ -142,7 +142,7 @@ class QuarkParser:
         return AssignmentStatement(names, expr_values)
 
     def _parse_expression(self) -> AnyExpressionType:
-        if self._match(TokenTypes.LET):
+        if self._match_any_from(TokenTypes.LET, TokenTypes.LETREC):
             return self._parse_let_expression()
         elif self._match(TokenTypes.IF):
             return self._parse_conditional_expression()
@@ -162,7 +162,8 @@ class QuarkParser:
                 return expr
 
     def _parse_let_expression(self) -> LetExpression:
-        self._expect(TokenTypes.LET)
+        self._expect_any_from(TokenTypes.LET, TokenTypes.LETREC)
+        make_rec = self._match(TokenTypes.LETREC)
         self._consume_token()
         binding_identifiers = self._parse_id_list()
         self._expect(TokenTypes.EQUAL)
@@ -171,6 +172,12 @@ class QuarkParser:
         self._expect(TokenTypes.IN)
         self._consume_token()
         body_expression = self._parse_expression()
+        if make_rec:
+            for i in range(len(binding_identifiers)):
+                initialiser_expressions[i] = ApplicationExpression(
+                    LambdaExpression.make_y_combinator(),
+                    LambdaExpression(binding_identifiers[i], initialiser_expressions[i])
+                )
         return LetExpression(binding_identifiers, initialiser_expressions, body_expression)
 
     def _make_desugared_lambda_expression(
