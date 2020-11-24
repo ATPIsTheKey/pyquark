@@ -135,11 +135,9 @@ class AssignmentStatement(Statement):
         self.expr_values = expr_values
     
     def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        closure_copy = closure.copy()
         for name, expr in zip(self.identifiers.only_raw_ids, self.expr_values):
-            if name in closure.keys() and name in expr.free_variables:
-                closure[name] = ApplicationExpression(LambdaExpression(name, expr), closure[name])
-            else:
-                closure[name] = expr
+            closure[name] = (expr, closure_copy if name in closure.keys() else None)
         return ExecutionResult(NoneType, None)
 
     def __repr__(self):
@@ -176,10 +174,7 @@ class LetExpression(Expression):
     def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
         closure_copy = closure.copy()
         for name, expr in zip(self.binding_identifiers, self.initialiser_expressions):
-            if name in closure.keys() and name in expr.free_variables:
-                closure[name] = ApplicationExpression(LambdaExpression(name, expr), closure[name])
-            else:
-                closure[name] = expr
+            closure_copy[name] = (expr, None)
         result = self.body_expression.execute(closure_copy, callstack)
         return result if result.type == LiteralType else ExecutionResult(LetExpression, self)
 
@@ -213,16 +208,36 @@ class LambdaExpression(Expression):
     @functools.cached_property
     def bound_variables(self) -> set:
         return set(self.binding_identifier) & self.body_expression.bound_variables
+
+    @staticmethod
+    def make_y_combinator() -> 'LambdaExpression':
+        return LambdaExpression(
+            'f', ApplicationExpression(
+                LambdaExpression(
+                    'x',
+                    ApplicationExpression(
+                        AtomExpression('f', TokenTypes.ID),
+                        ApplicationExpression(AtomExpression('x', TokenTypes.ID), AtomExpression('x', TokenTypes.ID)))
+                ),
+                LambdaExpression(
+                    'x',
+                    ApplicationExpression(
+                        AtomExpression('f', TokenTypes.ID),
+                        ApplicationExpression(AtomExpression('x', TokenTypes.ID), AtomExpression('x', TokenTypes.ID)))
+                ),
+            )
+        )
     
     def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        closure_copy = context['copy_closure'] if 'copy_closure' in context.keys() else closure.copy()
         if callstack:
             name, expr = self.binding_identifier, callstack[-1]
-            if name in closure.keys() and name in expr.free_variables:
-                closure[name] = ApplicationExpression(LambdaExpression(name, expr), closure[name])
-            else:
-                closure[name] = expr
+            closure_copy[name] = (expr, closure if name in closure.keys() else None)
             callstack.pop()
-        return self.body_expression.execute(closure, callstack)
+        if callstack:
+            return self.body_expression.execute(closure_copy, callstack, copy_closure=closure_copy)
+        else:
+            self.body_expression.execute(closure_copy, callstack)
 
     def __repr__(self):
         return f"\\ {self.binding_identifier}. {self.body_expression.__repr__()}"
@@ -307,12 +322,11 @@ class ApplicationExpression(Expression):
         return self.function.bound_variables | self.argument.bound_variables
 
     def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
-        closure_copy = closure.copy()
         if callstack:
             callstack.append(self.argument)
-            result = self.function.execute(closure_copy, callstack)
+            result = self.function.execute(closure, callstack)
         else:
-            result = self.function.execute(closure_copy, [self.argument])
+            result = self.function.execute(closure, [self.argument])
         if is_expression_type(result.type):  # todo: could be replaced by check for literal type
             return ExecutionResult(ApplicationExpression, self)
         else:
@@ -325,7 +339,7 @@ class ApplicationExpression(Expression):
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'function': self.function.node_dict_repr,
+             'function': self.function.node_dict_repr,
             'argument': self.argument.node_dict_repr
         }
 
@@ -486,38 +500,6 @@ class ListExpression(Expression):
         }
 
 
-class _InternalName(Expression):
-    _new_id = itertools.count()
-
-    def __init__(self):
-        self.id = str(next(_InternalName._new_id))
-
-    @functools.cached_property
-    def variables(self) -> set:
-        return self.free_variables
-
-    @functools.cached_property
-    def free_variables(self) -> set:
-        return {self.id}
-
-    @property
-    def bound_variables(self) -> set:
-        return set()
-
-    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
-        raise NotImplementedError
-
-    def __repr__(self):
-        return self.id
-
-    @functools.cached_property
-    def node_dict_repr(self) -> dict:
-        return {
-            'ast_node_name': self.__class__.__name__,
-            'expr_token': repr(self.id)
-        }
-
-
 class AtomExpression(Expression):
     def __init__(self, raw: 'str', type_: TokenTypes):
         self.raw = raw
@@ -548,8 +530,8 @@ class AtomExpression(Expression):
             return ExecutionResult(LiteralType, BooleanObject(1 if self.raw == 'true' else 0))
         else:  # type ID
             if self.raw in closure.keys():
-                expr = closure[self.raw]
-                return expr.execute(closure, callstack)
+                expr, eval_closure = closure[self.raw]
+                return expr.execute(eval_closure if eval_closure is not None else closure, callstack)
             else:
                 return ExecutionResult(AtomExpression, self)
 
@@ -563,6 +545,13 @@ class AtomExpression(Expression):
             'type': repr(self.type),
             'raw': repr(self.raw)
         }
+
+
+class _UniqueInternalName(AtomExpression):
+    _new_id = itertools.count()
+
+    def __init__(self):
+        super().__init__(str(next(_UniqueInternalName._new_id)), TokenTypes.ID)
 
 
 class ExpressionList(Expression, list):
