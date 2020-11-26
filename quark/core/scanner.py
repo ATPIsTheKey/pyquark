@@ -1,4 +1,6 @@
-from quark.core.token_ import Token, TokenTypes, keyword_tokens
+from quark.core.token_ import (
+    Token, TokenTypes, single_char_tokens, double_char_tokens, triple_char_tokens, keyword_tokens
+)
 
 from typing import List, Tuple, Union
 
@@ -14,8 +16,6 @@ class QuarkScannerError(Exception):
 
 
 class QuarkScanner:
-    _EOS_MARKER = '\0'
-
     def __init__(self, source: str, ignore_skippables=True):
         self._source = source
 
@@ -29,18 +29,16 @@ class QuarkScanner:
         self.__init__(source, ignore_skippables)
 
     @property
-    def _pos(self) -> Tuple[int, int]:
+    def _current_pos(self) -> Tuple[int, int]:
         return self._column_pos, self._line_pos
 
     @property
     def _current_char(self) -> str:
-        return self._source[self._source_pos] if not self._reached_end_of_source() \
-            else self._EOS_MARKER
+        return self._source[self._source_pos] if not self._reached_end_of_source() else None
 
-    @property
-    def _next_char(self) -> str:
-        return self._source[self._source_pos + 1] if not self._reached_end_of_source(off=1) \
-            else self._current_char
+    def _current_nchars(self, n) -> str:
+        return self._source[self._source_pos:self._source_pos + n] \
+            if not self._reached_end_of_source(off=n - 1) else None
 
     @property
     def _consumed_chars(self) -> str:
@@ -49,17 +47,8 @@ class QuarkScanner:
     def _match(self, s: str) -> bool:
         if self._reached_end_of_source(off=len(s) - 1):
             return False
-        return self._source[self._source_pos:self._source_pos + len(s)] == s
-
-    def _expect(self, c: str, not_met_msg: str):
-        if not self._current_char == c:
-            raise QuarkScannerError(
-                f'SyntaxError: Expected "{c}" at '
-                f'{self._line_pos}:{self._column_pos}. {not_met_msg}'
-            )
-
-    def _is_illegal(self, reasoning: str):
-        pass
+        else:
+            return self._source[self._source_pos:self._source_pos + len(s)] == s
 
     def _consume_char(self):
         if self._reached_end_of_source():
@@ -70,6 +59,10 @@ class QuarkScanner:
         self._column_pos += 1
         self._source_pos += 1
 
+    def _consume_nchars(self, n: int):
+        for _ in range(n):
+            self._consume_char()
+
     def _discard_consumed_chars(self):
         self._source_start = self._source_pos
 
@@ -77,67 +70,81 @@ class QuarkScanner:
         return self._source_pos == self._source_len - off
 
     def _is_id_start(self) -> bool:
-        return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
-               or self._current_char == '_' or ord(self._current_char) >= 128
+        if self._reached_end_of_source():
+            return False
+        else:
+            return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
+                   or self._current_char == '_' or ord(self._current_char) >= 128
 
     def _is_id_char(self) -> bool:
-        return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
-               or '0' <= self._current_char <= '9' or self._current_char == '_' \
-               or ord(self._current_char) >= 128
-
-    def _is_num_start(self) -> bool:
-        return '0' <= self._current_char <= '9' or self._current_char == '.'
+        if self._reached_end_of_source():
+            return False
+        else:
+            return 'A' <= self._current_char <= 'Z' or 'a' <= self._current_char <= 'z' \
+                   or '0' <= self._current_char <= '9' or self._current_char == '_' \
+                   or ord(self._current_char) >= 128
 
     def _is_num_char(self) -> bool:
-        return '0' <= self._current_char <= '9'
+        if self._reached_end_of_source():
+            return False
+        else:
+            return '0' <= self._current_char <= '9'
 
     def _is_str_start(self) -> bool:
-        return self._current_char == '"'
+        if self._reached_end_of_source():
+            return False
+        else:
+            return self._current_char == '"'
 
     def _is_str_char(self) -> bool:
-        return self._current_char != '"' and self._current_char.isascii()
+        if self._reached_end_of_source():
+            return False
+        else:
+            return self._current_char != '"' and self._current_char.isascii()
         # todo: think of restrictions
 
     def _is_skippable(self) -> bool:
-        return self._current_char in (' ', '\t')
+        if self._reached_end_of_source():
+            return False
+        else:
+            return self._current_char in {' ', '\t'}
 
-    def _as_keyword(self) -> Union[None, Token]:
-        try:
-            return keyword_tokens[self._consumed_chars]
-        except KeyError:
-            return None
-
-    def next_token(self) -> Token:
-        token_type = None
+    def next_token(self) -> Union[Token, None]:
+        pos = self._current_pos
 
         if self._is_skippable():
+            self._consume_char()
             while self._is_skippable():
                 self._consume_char()
             if self._ignore_skippables:
                 self._discard_consumed_chars()
+                if self._reached_end_of_source():
+                    return None
             else:
                 ret = self._consumed_chars
                 self._discard_consumed_chars()
-                return Token(TokenTypes.SKIP, ret, self._pos)
+                return Token(TokenTypes.SKIP, ret, pos)
 
-        if self._is_id_start():
+        if self._is_num_char():
+            must_be_real_or_zero = self._match('0')
             self._consume_char()
-            while self._is_id_char():
-                self._consume_char()
-            if len(self._consumed_chars) > 1:
-                if keyword := self._as_keyword():
-                    token_type = keyword
+            while self._is_num_char():
+                if must_be_real_or_zero and not self._match('0'):
+                    raise QuarkScannerError(
+                        f'SyntaxError: leading zeros in decimal integer literals are not permitted!'
+                    )
                 else:
-                    token_type = TokenTypes.ID
-            else:
-                token_type = TokenTypes.ID
-        elif self._is_str_start():
-            self._consume_char()
-            while self._is_str_char():
+                    self._consume_char()
+            if self._match('.'):
                 self._consume_char()
-            self._expect(
-                '"', not_met_msg=f'EOL while scanning string literal'
-            )
+                while self._is_num_char():
+                    self._consume_char()
+                type_ = TokenTypes.REAL
+            else:
+                type_ = TokenTypes.INTEGER
+            if self._match('im'):
+                type_ = TokenTypes.COMPLEX
+                self._consume_nchars(2)
         elif self._match('.'):
             self._consume_char()
             if self._is_num_char():
@@ -145,155 +152,37 @@ class QuarkScanner:
                 while self._is_num_char():
                     self._consume_char()
                 if self._match('im'):
-                    self._consume_char()
-                    self._consume_char()
-                    token_type = TokenTypes.COMPLEX
+                    type_ = TokenTypes.COMPLEX
+                    self._consume_nchars(2)
                 else:
-                    token_type = TokenTypes.REAL
+                    type_ = TokenTypes.REAL
             else:
-                token_type = TokenTypes.PERIOD
-        elif self._is_num_char():
-            if must_be_real := self._current_char == '0':
+                type_ = TokenTypes.PERIOD
+        elif self._current_nchars(3) in triple_char_tokens.keys():
+            self._consume_nchars(3)
+            type_ = triple_char_tokens[self._consumed_chars]
+        elif self._current_nchars(2) in double_char_tokens.keys():
+            self._consume_nchars(2)
+            type_ = double_char_tokens[self._consumed_chars]
+        elif self._current_char in single_char_tokens.keys():
+            self._consume_char()
+            type_ = single_char_tokens[self._consumed_chars]
+        elif self._is_id_start():
+            self._consume_char()
+            while self._is_id_char():
                 self._consume_char()
-                if not self._is_num_char() and self._current_char != '.':
-                    return Token(TokenTypes.INTEGER, self._consumed_chars, self._pos)
-            while self._is_num_char():
-                self._consume_char()
-            if must_be_real:
-                self._expect(
-                    '.', not_met_msg=f'Leading zeros in decimal integer literals are not permitted'
-                )
-                self._consume_char()
-                while self._is_num_char():
-                    self._consume_char()
-                if self._match('im'):
-                    self._consume_char()
-                    self._consume_char()
-                    token_type = TokenTypes.COMPLEX
-                else:
-                    token_type = TokenTypes.REAL
+            if self._consumed_chars in keyword_tokens.keys():
+                type_ = keyword_tokens[self._consumed_chars]
             else:
-                if self._match('.'):
-                    self._consume_char()
-                    while self._is_num_char():
-                        self._consume_char()
-                    if self._match('im'):
-                        self._consume_char()
-                        self._consume_char()
-                        token_type = TokenTypes.COMPLEX
-                    else:
-                        token_type = TokenTypes.REAL
-                else:
-                    if self._match('im'):
-                        self._consume_char()
-                        self._consume_char()
-                        token_type = TokenTypes.COMPLEX
-                    else:
-                        token_type = TokenTypes.INTEGER
-        elif self._match('+'):
-            self._consume_char()
-            token_type = TokenTypes.PLUS
-        elif self._match('-'):
-            self._consume_char()
-            token_type = TokenTypes.MINUS
-        elif self._match('*'):
-            self._consume_char()
-            if self._match('*'):
-                self._consume_char()
-                token_type = TokenTypes.DOUBLE_STAR
-            else:
-                token_type = TokenTypes.STAR
-        elif self._match('%'):
-            self._consume_char()
-            token_type = TokenTypes.PERCENT
-        elif self._match('/'):
-            self._consume_char()
-            if self._match('/'):
-                self._consume_char()
-                token_type = TokenTypes.DOUBLE_SLASH
-            elif self._match('%'):
-                self._consume_char()
-                token_type = TokenTypes.SLASH_PERCENT
-            else:
-                token_type = TokenTypes.SLASH
-        elif self._match('@'):
-            self._consume_char()
-            token_type = TokenTypes.AT
-        elif self._match('&'):
-            self._consume_char()
-            token_type = TokenTypes.AMPERSAND
-        elif self._match('<'):
-            self._consume_char()
-            if self._match('='):
-                self._consume_char()
-                token_type = TokenTypes.SMALLER_EQUAL
-            else:
-                token_type = TokenTypes.SMALLER
-        elif self._match('>'):
-            self._consume_char()
-            if self._match('='):
-                self._consume_char()
-                token_type = TokenTypes.GREATER_EQUAL
-            else:
-                token_type = TokenTypes.GREATER
-        elif self._match('='):
-            self._consume_char()
-            if self._match('='):
-                self._consume_char()
-                token_type = TokenTypes.DOUBLE_EQUAL
-            else:
-                token_type = TokenTypes.EQUAL
-        elif self._match(','):
-            self._consume_char()
-            token_type = TokenTypes.COMMA
-        elif self._match('.'):
-            self._consume_char()
-            token_type = TokenTypes.PERIOD
-        elif self._match('{'):
-            self._consume_char()
-            token_type = TokenTypes.LEFT_CURLY_BRACKET
-        elif self._match('}'):
-            self._consume_char()
-            token_type = TokenTypes.RIGHT_CURLY_BRACKET
-        elif self._match('['):
-            self._consume_char()
-            token_type = TokenTypes.LEFT_BRACKET
-        elif self._match(']'):
-            self._consume_char()
-            token_type = TokenTypes.RIGHT_BRACKET
-        elif self._match('('):
-            self._consume_char()
-            token_type = TokenTypes.LEFT_PARENTHESIS
-        elif self._match(')'):
-            self._consume_char()
-            token_type = TokenTypes.RIGHT_PARENTHESIS
-        elif self._match(';'):
-            self._consume_char()
-            token_type = TokenTypes.SEMICOLON
-        elif self._match('~'):
-            self._consume_char()
-            token_type = TokenTypes.TILDE
-        elif self._match('|'):
-            self._consume_char()
-            token_type = TokenTypes.VERTICAL_BAR
-        elif self._match(':'):
-            self._consume_char()
-            if self._match(':'):
-                self._consume_char()
-                token_type = TokenTypes.DOUBLE_COLON
-            else:
-                token_type = TokenTypes.COLON
-        elif self._match('\n'):
-            self._consume_char()
-            token_type = TokenTypes.NEWLINE
+                type_ = TokenTypes.ID
         else:
             raise QuarkScannerError(
                 f'SyntaxError: invalid character {repr(self._current_char)} in identifier'
             )
 
-        token = Token(token_type, self._consumed_chars, self._pos)
+        ret = Token(type_, self._consumed_chars, pos)
         self._discard_consumed_chars()
-        return token
+        return ret
 
     def tokens(self) -> List[Token]:
         toks = []
@@ -303,9 +192,9 @@ class QuarkScanner:
 
 
 if __name__ == '__main__':
-    lexer = QuarkScanner('let a = 234 in a * a')
+    lexer = QuarkScanner('', ignore_skippables=False)
     while test := input('>>> '):
-        lexer.reset(test)
+        lexer.reset(test, ignore_skippables=False)
         print(
             '\n'.join(repr(t) for t in lexer.tokens())
         )

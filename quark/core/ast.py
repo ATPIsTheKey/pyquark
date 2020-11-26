@@ -1,25 +1,29 @@
-import functools
-
-from quark.core.runtime.boolean import BooleanObject
 from quark.core.token_ import Token, TokenTypes
-from quark.core.namespace import EvaluationContext, EnvironmentStack
 # todo: fix those imports
 from quark.core.runtime.list import ListObject
 from quark.core.runtime.integer import IntegerObject
 from quark.core.runtime.real import RealObject
 from quark.core.runtime.complex import ComplexObject
 from quark.core.runtime.string import StringObject
-from quark.core.runtime.operations import execute_unary_operation_from_token_type, \
-    execute_binary_operation_from_token_type
+from quark.core.runtime.boolean import BooleanObject
 
+import functools
+import itertools
+from collections import namedtuple
 import abc
-from typing import Union, Tuple, List, Callable, Any
+from typing import Union, Tuple, List, Deque, Callable, Any
 import json
 
 __all__ = [
     'StatementList', 'ImportStatement', 'ExportStatement', 'LetExpression', 'LambdaExpression',
     'ConditionalExpression', 'ApplicationExpression', 'BinaryExpression', 'UnaryExpression', 'AtomExpression',
-    'ExpressionList', 'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType'
+    'ExpressionList', 'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType',
+    'ListExpression'
+]
+
+AnyAstNodeType = Union[
+    'LetExpression', 'LambdaExpression', 'IfThenElseExpression', 'ApplicationExpression',
+    'BinaryExpression', 'UnaryExpression', 'ExpressionList', 'ImportStatement', 'ExportStatement', 'AnyExpressionType'
 ]
 
 AnyExpressionType = Union[
@@ -31,13 +35,11 @@ AnyStatementType = Union[
     'ImportStatement', 'ExportStatement', 'AnyExpressionType'
 ]
 
-LiteralType = Union[
-    'IntegerObject', 'RealObject', 'ComplexObject', 'StringObject', 'ListObject'
-]
+LiteralType = type('LiteralType', (), {})()
 
+NoneType = type('NoneType', (), {})()
 
-def is_literal(val: Any) -> bool:
-    return isinstance(val, (IntegerObject, RealObject, ComplexObject, StringObject, ListObject))
+ExecutionResult = namedtuple('ExecutionResult', ('type', 'val'))
 
 
 class ASTNode(abc.ABC):
@@ -50,20 +52,26 @@ class ASTNode(abc.ABC):
         return json.dumps(self.node_dict_repr)
 
 
-class Statement(ASTNode):
+class Statement(ASTNode, abc.ABC):
     @abc.abstractmethod
-    def execute(self, evaluation_context: 'EvaluationContext'):
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
         raise NotImplementedError
 
 
-class Expression(ASTNode):
+class Expression(Statement, abc.ABC):
+    @property
+    @abc.abstractmethod
+    def variables(self) -> set:
+        raise NotImplementedError
+
     @property
     @abc.abstractmethod
     def free_variables(self) -> set:
         raise NotImplementedError
 
+    @property
     @abc.abstractmethod
-    def execute(self, evaluation_context: 'EvaluationContext') -> Union[LiteralType, None]:
+    def bound_variables(self) -> set:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -74,8 +82,8 @@ class Expression(ASTNode):
 class StatementList(ASTNode, list):
     append: Callable[[AnyStatementType], None]
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        return [stmt.execute(evaluation_context) for stmt in self]
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> List[ExecutionResult]:
+        return [stmt.execute(closure, callstack) for stmt in self]
 
     @property
     def node_dict_repr(self) -> dict:
@@ -90,8 +98,9 @@ class ImportStatement(Statement):
         self.package_names = package_names
         self.alias_names = alias_names
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
         raise NotImplementedError
+        return ExecutionResult(ExecutionResultTypes.NONE, None)
 
     @property
     def node_dict_repr(self) -> dict:
@@ -106,9 +115,10 @@ class ExportStatement(Statement):
     def __init__(self, package_names: 'IdList', alias_names: Union['IdList', None]):
         self.package_names = package_names
         self.alias_names = alias_names
-
-    def execute(self, global_namespace: 'EnvironmentStack'):
+    
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
         raise NotImplementedError
+        return ExecutionResult(ExecutionResultTypes.NONE, None)
 
     @property
     def node_dict_repr(self) -> dict:
@@ -123,10 +133,15 @@ class AssignmentStatement(Statement):
     def __init__(self, identifiers: 'IdList', expr_values: 'ExpressionList'):
         self.identifiers = identifiers
         self.expr_values = expr_values
+    
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        closure_copy = closure.copy()
+        for name, expr in zip(self.identifiers.only_raw_ids, self.expr_values):
+            closure[name] = (expr, closure_copy if name in closure.keys() else None)
+        return ExecutionResult(NoneType, None)
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        for name, expr_value in zip(self.identifiers.only_raw_ids, self.expr_values.execute(evaluation_context)):
-            evaluation_context.environment_stack.update_top_environment(name, expr_value)
+    def __repr__(self):
+        return f"{', '.join(self.identifiers.only_raw_ids)} = {', '.join(expr.__repr__() for expr in self.expr_values)}"
 
     @property
     def node_dict_repr(self) -> dict:
@@ -138,82 +153,116 @@ class AssignmentStatement(Statement):
 
 
 class LetExpression(Expression):
-    def __init__(self, bound_identifiers: 'IdList', initialiser_expressions: 'ExpressionList',
+    def __init__(self, binding_variables: 'IdList', initialiser_expressions: 'ExpressionList',
                  body_expression: Union[AnyExpressionType, None]):
-        self.bound_identifiers = bound_identifiers
+        self.binding_identifiers = binding_variables
         self.initialiser_expressions = initialiser_expressions
         self.body_expression = body_expression
 
     @functools.cached_property
-    def free_variables(self):
-        return {*self.bound_identifiers.only_raw_ids} | self.initialiser_expressions.free_variables | \
-               self.body_expression.free_variables
+    def variables(self) -> set:
+        return self.initialiser_expressions.variables | self.body_expression.variables
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        evaluation_context.environment_stack.push_new_top_environment()
-        for name, val in zip(
-                self.bound_identifiers.only_raw_ids, self.initialiser_expressions
-        ):
-            evaluation_context.environment_stack.update_top_environment(name, val)
-        ret = self.body_expression.execute(evaluation_context)
-        evaluation_context.environment_stack.pop_top_environment()
-        return ret
+    @functools.cached_property
+    def free_variables(self) -> set:
+        return self.body_expression.free_variables - set(self.binding_identifiers.only_raw_ids) | self.initialiser_expressions.free_variables
+
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        return self.body_expression.variables & set(self.binding_identifiers.only_raw_ids) | self.initialiser_expressions.bound_variables
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        closure_copy = closure.copy()
+        for name, expr in zip(self.binding_identifiers, self.initialiser_expressions):
+            closure_copy[name] = (expr, None)
+        result = self.body_expression.execute(closure_copy, callstack)
+        return result if result.type == LiteralType else ExecutionResult(LetExpression, self)
 
     def __repr__(self):
-        return f'let {self.bound_identifiers.__repr__()} = {self.initialiser_expressions.__repr__()} ' \
-               f'{self.body_expression.__repr__()}'
+        return f'let {self.binding_identifiers.__repr__()} = ' \
+               f'{self.initialiser_expressions.__repr__()} in {self.body_expression.__repr__()}'
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'bound_identifiers': self.bound_identifiers.node_dict_repr,
+            'binding_variables': self.binding_identifiers.node_dict_repr,
             'initialiser_expressions': self.initialiser_expressions.node_dict_repr,
             'body_expression': self.body_expression.node_dict_repr
         }
 
 
 class LambdaExpression(Expression):
-    def __init__(self, bound_identifier: 'Token', body_expression: AnyExpressionType):
-        self.bound_variable = bound_identifier
+    def __init__(self, binding_identifier: str, body_expression: AnyExpressionType):
+        self.binding_identifier = binding_identifier
         self.body_expression = body_expression
 
     @functools.cached_property
+    def variables(self) -> set:
+        return self.body_expression.variables
+
+    @functools.cached_property
     def free_variables(self) -> set:
-        return {self.bound_variable} | self.body_expression.free_variables
+        return self.body_expression.free_variables - set(self.binding_identifier)
 
-    def execute(self, evaluation_context: 'EvaluationContext') -> Union[LiteralType, 'LambdaExpression']:
-        if partial_eval_only := not evaluation_context.call_stack:
-            evaluation_context.environment_stack.update_top_environment(
-                self.bound_variable.val, evaluation_context.call_stack[0]
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        return set(self.binding_identifier) & self.body_expression.bound_variables
+
+    @staticmethod
+    def make_y_combinator() -> 'LambdaExpression':
+        return LambdaExpression(
+            'f', ApplicationExpression(
+                LambdaExpression(
+                    'x',
+                    ApplicationExpression(
+                        AtomExpression('f', TokenTypes.ID),
+                        ApplicationExpression(AtomExpression('x', TokenTypes.ID), AtomExpression('x', TokenTypes.ID)))
+                ),
+                LambdaExpression(
+                    'x',
+                    ApplicationExpression(
+                        AtomExpression('f', TokenTypes.ID),
+                        ApplicationExpression(AtomExpression('x', TokenTypes.ID), AtomExpression('x', TokenTypes.ID)))
+                ),
             )
-            evaluation_context.call_stack.consume()
-            evaluation_context.call_stack.pop_consumed()
-
-        ret = self.body_expression.execute(evaluation_context)
-        if not isinstance(ret, LambdaExpression) and isinstance(ret, Expression):
-            return LambdaExpression(self.bound_variable, ret)
+        )
+    
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        closure_copy = context['copy_closure'] if 'copy_closure' in context.keys() else closure.copy()
+        if callstack:
+            name, expr = self.binding_identifier, callstack[-1]
+            closure_copy[name] = (expr, closure if name in closure.keys() else None)
+            callstack.pop()
+        if callstack:
+            return self.body_expression.execute(closure_copy, callstack, copy_closure=closure_copy)
         else:
-            return ret
+            self.body_expression.execute(closure_copy, callstack)
 
     def __repr__(self):
-        return f"lambda {', '.join(self.bound_variable.val)} . {self.body_expression.__repr__()}"
+        return f"\\ {self.binding_identifier}. {self.body_expression.__repr__()}"
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'bound_variable': self.bound_variable.val,
+            'bound_variable': self.binding_identifier,
             'body_expression': self.body_expression.node_dict_repr
         }
 
 
 class ConditionalExpression(Expression):
-    def __init__(self, condition: AnyExpressionType, consequent: AnyExpressionType,
-                 alternative: Union[AnyExpressionType, None]):
+    def __init__(self, condition: AnyExpressionType, consequent: AnyExpressionType, alternative: Union['AnyExpressionType', None] = None):
         self.condition = condition
         self.consequent = consequent
         self.alternative = alternative
+
+    @functools.cached_property
+    def variables(self) -> set:
+        if self.alternative:
+            return self.condition.variables | self.consequent.variables | self.alternative.variables
+        else:
+            return self.condition.variables | self.consequent.variables
 
     @functools.cached_property
     def free_variables(self) -> set:
@@ -222,14 +271,28 @@ class ConditionalExpression(Expression):
         else:
             return self.condition.free_variables | self.consequent.free_variables
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        if self.condition.execute(evaluation_context) == BooleanObject(True):
-            return self.consequent.execute(evaluation_context)
-        elif self.alternative:
-            return self.alternative.execute(evaluation_context)
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        if self.alternative:
+            return self.condition.bound_variables | self.consequent.bound_variables | self.alternative.bound_variables
+        else:
+            return self.condition.bound_variables | self.consequent.bound_variables
+    
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        condition_result = self.condition.execute(closure)
+        if condition_result.type == LiteralType:
+            if condition_result.val == BooleanObject(True):
+                return self.consequent.execute(closure)
+            else:
+                return self.alternative.execute(closure)
+        else:
+            return ExecutionResult(ConditionalExpression, self)
 
     def __repr__(self):
-        return f'if {self.condition.__repr__()} then {self.consequent.__repr__()} else {self.alternative.__repr__()}'
+        fmt = f'if {self.condition.__repr__()} then {self.consequent.__repr__()}'
+        if self.alternative:
+            fmt += f' else {self.alternative.__repr__()}'
+        return fmt
 
     @property
     def node_dict_repr(self) -> dict:
@@ -242,57 +305,77 @@ class ConditionalExpression(Expression):
 
 
 class ApplicationExpression(Expression):
-    def __init__(self, function: AnyExpressionType, argument_value: AnyExpressionType):
+    def __init__(self, function: AnyExpressionType, argument: 'Expression'):
         self.function = function
-        self.argument_value = argument_value
+        self.argument = argument
+
+    @functools.cached_property
+    def variables(self) -> set:
+        return self.function.variables | self.argument.variables
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return self.function.free_variables | self.argument_value.free_variables
+        return self.function.free_variables | self.argument.free_variables
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        if type(self.function) is LambdaExpression:
-            applicable_function = self.function
-        elif type(self.function) is AtomExpression:
-            if self.function.expr_token.type == TokenTypes.ID:
-                applicable_function = evaluation_context.environment_stack.deep_search_name(
-                    self.function.expr_token.val
-                )
-                if not type(applicable_function) == LambdaExpression:
-                    return applicable_function.execute(evaluation_context)
-            else:
-                return self.function.execute(evaluation_context)
-        elif type(self.function) is ApplicationExpression:
-            applicable_function = self.function.execute(evaluation_context)
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        return self.function.bound_variables | self.argument.bound_variables
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        if callstack:
+            callstack.append(self.argument)
+            result = self.function.execute(closure, callstack)
         else:
-            raise Exception  # todo
-        
-        if is_literal(applicable_function):
-            return applicable_function
-        
-        evaluation_context.environment_stack.push_new_top_environment()
-        evaluation_context.call_stack.append(self.argument_value.execute(evaluation_context))
-        ret = applicable_function.execute(evaluation_context)
-        evaluation_context.environment_stack.pop_top_environment()
-
-        return ret
+            result = self.function.execute(closure, [self.argument])
+        if is_expression_type(result.type):  # todo: could be replaced by check for literal type
+            return ExecutionResult(ApplicationExpression, self)
+        else:
+            return result
 
     def __repr__(self):
-        return f'{self.function.__repr__()}({", ".join(str(arg) for arg in self.argument_value.__repr__())})'
+        return f'({self.function.__repr__()})({self.argument.__repr__()})'
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'function': self.function.node_dict_repr,
-            'arguments': self.argument_value.node_dict_repr if isinstance(self.argument_value, Expression)
-            else self.argument_value.__repr__()
+             'function': self.function.node_dict_repr,
+            'argument': self.argument.node_dict_repr
         }
 
 
 def repr_must_be_parenthesised(cls: Union['BinaryExpression', 'UnaryExpression'],
                                expr: Union['BinaryExpression', 'UnaryExpression']):
-    return type(expr) in (BinaryExpression, UnaryExpression) and cls.operand.precedence > expr.operand.precedence
+    return type(expr) in {BinaryExpression, UnaryExpression} and cls.operand.precedence > expr.operand.precedence
+
+
+_token_unary_operation_mapping = {
+    TokenTypes.MINUS: lambda x: -x,
+    TokenTypes.HEAD: lambda x: x.head,
+    TokenTypes.TAIL: lambda x: x.tail,
+    TokenTypes.NIL: lambda x: x.is_nil,
+    TokenTypes.NOT: lambda x: not x
+}
+
+_token_binary_operation_mapping = {
+    TokenTypes.PLUS: lambda x, y: x + y,
+    TokenTypes.MINUS: lambda x, y: x - y,
+    TokenTypes.STAR: lambda x, y: x * y,
+    TokenTypes.SLASH: lambda x, y: x / y,
+    TokenTypes.DOUBLE_SLASH: lambda x, y: x // y,
+    TokenTypes.DOUBLE_STAR: lambda x, y: x ** y,
+    TokenTypes.PERCENT: lambda x, y: x % y,
+    TokenTypes.SLASH_PERCENT: lambda x, y: None,  # todo
+    TokenTypes.GREATER: lambda x, y: x > y,
+    TokenTypes.LESS: lambda x, y: x < y,
+    TokenTypes.GREATER_EQUAL: lambda x, y: x >= y,
+    TokenTypes.LESS_EQUAL: lambda x, y: x <= y,
+    TokenTypes.DOUBLE_EQUAL: lambda x, y: x == y,
+    TokenTypes.EXCLAMATION_EQUAL: lambda x, y: x != y,
+    TokenTypes.AND: lambda x, y: BooleanObject(x) and BooleanObject(y),
+    TokenTypes.OR: lambda x, y: BooleanObject(x) or BooleanObject(y),
+    TokenTypes.XOR: lambda x, y: BooleanObject(x) ^ BooleanObject(y)
+}
 
 
 class BinaryExpression(Expression):
@@ -300,21 +383,32 @@ class BinaryExpression(Expression):
         self.lhs_expr = lhs_expr
         self.operand = operand
         self.rhs_expr = rhs_expr
-        
+
+    @functools.cached_property
+    def variables(self) -> set:
+        return self.lhs_expr.variables | self.rhs_expr.variables
+
     @functools.cached_property
     def free_variables(self) -> set:
         return self.lhs_expr.free_variables | self.rhs_expr.free_variables
-    
-    def execute(self, evaluation_context: 'EvaluationContext') -> Union[AnyExpressionType, LiteralType]:
-        left_val = self.lhs_expr.execute(evaluation_context) if isinstance(self.lhs_expr, Expression) else self.lhs_expr
-        right_val = self.rhs_expr.execute(evaluation_context) if isinstance(self.rhs_expr, Expression) else self.rhs_expr
-        print(left_val, right_val)
-        return execute_binary_operation_from_token_type(self.operand.type, left_val, right_val)
+
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        return self.lhs_expr.bound_variables | self.rhs_expr.bound_variables
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        if self.free_variables.issubset(closure.keys()):
+            left_result, right_result = self.lhs_expr.execute(closure), self.rhs_expr.execute(closure)
+            return ExecutionResult(
+                LiteralType, _token_binary_operation_mapping[self.operand.type](left_result.val, right_result.val)
+            )
+        else:
+            return ExecutionResult(BinaryExpression, self)
 
     def __repr__(self):
         left_repr, right_repr = self.lhs_expr.__repr__(), self.rhs_expr.__repr__()
         fmt = f"{f'({left_repr})' if repr_must_be_parenthesised(self, self.lhs_expr) else left_repr}"
-        fmt += f' {self.operand.val} '
+        fmt += f' {self.operand.raw} '
         fmt += f"{f'({right_repr})' if repr_must_be_parenthesised(self, self.rhs_expr) else right_repr}"
         return fmt
 
@@ -334,16 +428,29 @@ class UnaryExpression(Expression):
         self.expr = expr
 
     @functools.cached_property
+    def variables(self) -> set:
+        return self.expr.variables
+
+    @functools.cached_property
     def free_variables(self) -> set:
         return self.expr.free_variables
 
-    def execute(self, evaluation_context: 'EvaluationContext') -> LiteralType:
-        val = self.expr.execute(evaluation_context)
-        return execute_unary_operation_from_token_type(self.operand.type, val)
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        return self.expr.bound_variables
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        if self.free_variables.issubset(closure.keys()):
+            result = self.expr.execute(closure)
+            return ExecutionResult(
+                LiteralType, _token_unary_operation_mapping[self.operand.type](result)
+            )
+        else:
+            return ExecutionResult(Expression, self)
 
     def __repr__(self):
         repr_ = self.expr.__repr__()
-        return f"{self.operand.val} {f'({repr_})' if repr_must_be_parenthesised(self, self.expr) else repr_}"
+        return f"{self.operand.raw} {f'({repr_})' if repr_must_be_parenthesised(self, self.expr) else repr_}"
 
     @property
     def node_dict_repr(self) -> dict:
@@ -354,44 +461,108 @@ class UnaryExpression(Expression):
         }
 
 
-class AtomExpression(Expression):
-    def __init__(self, token: 'Token'):
-        self.expr_token = token
+class ListExpression(Expression):
+    def __init__(self, items: List[AnyExpressionType]):
+        self.items = items
+
+    @functools.cached_property
+    def variables(self) -> set:
+        ret = set()
+        for item in self.items:
+            ret |= item.variables
+        return ret
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return {self.expr_token.val} if self.expr_token.type == TokenTypes.ID else set()
+        ret = set()
+        for item in self.items:
+            ret |= item.free_variables
+        return ret
 
-    def execute(self, evaluation_context: 'EvaluationContext') -> Union[LiteralType, 'AtomExpression']:
-        tok_type, tok_val = self.expr_token.type, self.expr_token.val
-        if tok_type == TokenTypes.INTEGER:
-            return IntegerObject(tok_val)
-        elif tok_type == TokenTypes.REAL:
-            return RealObject(tok_val)
-        if tok_type == TokenTypes.COMPLEX:
-            return ComplexObject(tok_val)
-        elif tok_type == TokenTypes.STRING:
-            return StringObject(tok_val)
-        else:  # token is an ID
-            if evaluation_context.environment_stack.contains_name_in_any_environment(tok_val):
-                ret = evaluation_context.environment_stack.deep_search_name(tok_val)
-                return ret.execute(evaluation_context) if isinstance(ret, Expression) else ret
-            else:
-                return self
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        ret = set()
+        for item in self.items:
+            ret |= item.bound_variables
+        return ret
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        raise NotImplementedError
 
     def __repr__(self):
-        return self.expr_token.val
+        return f"[{', '.join(item.__repr__() for item in self.items)}]"
 
     @property
     def node_dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'expr_token': repr(self.expr_token)
+            'exprs': [item.node_dict_repr for item in self.items]
         }
+
+
+class AtomExpression(Expression):
+    def __init__(self, raw: 'str', type_: TokenTypes):
+        self.raw = raw
+        self.type = type_
+
+    @functools.cached_property
+    def variables(self) -> set:
+        return self.free_variables
+
+    @functools.cached_property
+    def free_variables(self) -> set:
+        return {self.raw} if self.type == TokenTypes.ID else set()
+
+    @property
+    def bound_variables(self) -> set:
+        return set()
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        if self.type == TokenTypes.INTEGER:
+            return ExecutionResult(LiteralType, IntegerObject(self.raw))
+        elif self.type == TokenTypes.REAL:
+            return ExecutionResult(LiteralType, RealObject(self.raw))
+        elif self.type == TokenTypes.COMPLEX:
+            return ExecutionResult(LiteralType, ComplexObject(self.raw))
+        elif self.type == TokenTypes.STRING:
+            return ExecutionResult(LiteralType, StringObject(self.raw))
+        elif self.type == TokenTypes.BOOLEAN:
+            return ExecutionResult(LiteralType, BooleanObject(1 if self.raw == 'true' else 0))
+        else:  # type ID
+            if self.raw in closure.keys():
+                expr, eval_closure = closure[self.raw]
+                return expr.execute(eval_closure if eval_closure is not None else closure, callstack)
+            else:
+                return ExecutionResult(AtomExpression, self)
+
+    def __repr__(self):
+        return self.raw
+
+    @functools.cached_property
+    def node_dict_repr(self) -> dict:
+        return {
+            'ast_node_name': self.__class__.__name__,
+            'type': repr(self.type),
+            'raw': repr(self.raw)
+        }
+
+
+class _UniqueInternalName(AtomExpression):
+    _new_id = itertools.count()
+
+    def __init__(self):
+        super().__init__(str(next(_UniqueInternalName._new_id)), TokenTypes.ID)
 
 
 class ExpressionList(Expression, list):
     append: Callable[[AnyExpressionType], None]
+
+    @functools.cached_property
+    def variables(self) -> set:
+        ret = set()
+        for expr in self:
+            ret |= expr.variables
+        return ret
 
     @functools.cached_property
     def free_variables(self) -> set:
@@ -400,8 +571,15 @@ class ExpressionList(Expression, list):
             ret |= expr.free_variables
         return ret
 
-    def execute(self, evaluation_context: 'EvaluationContext'):
-        return [expr.execute(evaluation_context) for expr in self]
+    @functools.cached_property
+    def bound_variables(self) -> set:
+        ret = set()
+        for expr in self:
+            ret |= expr.bound_variables
+        return ret
+
+    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None, **context) -> ExecutionResult:
+        raise NotImplementedError
 
     def __repr__(self):
         return f"{', '.join(repr(item) for item in self)}"
@@ -415,14 +593,14 @@ class ExpressionList(Expression, list):
 
 
 class IdList(ASTNode, list):
-    append: Callable[[Token], None]
+    append: Callable[[str], None]
 
     @property
     def only_raw_ids(self):
-        return [t.val for t in self]
+        return [id_ for id_ in self]
 
     def __repr__(self):
-        return f"{', '.join(t.val for t in self)}"
+        return f"{', '.join(id_ for id_ in self)}"
 
     @property
     def node_dict_repr(self) -> dict:
@@ -430,6 +608,16 @@ class IdList(ASTNode, list):
             'ast_node_name': self.__class__.__name__,
             'identifiers': [repr(id_) for id_ in self]
         }
+
+
+expression_types = {
+    LetExpression, LambdaExpression, ConditionalExpression, ApplicationExpression, BinaryExpression, UnaryExpression,
+    AtomExpression
+}
+
+
+def is_expression_type(t):
+    return t in expression_types
 
 
 if __name__ == '__main__':
