@@ -1,7 +1,6 @@
 from quark.core.token_ import TokenTypes, Token
 from quark.core.scanner import QuarkScanner
 from quark.core.parser import QuarkParser
-from quark.core.namespace import EvaluationContext, EnvironmentStack, CallStack
 
 
 if __name__ == '__main__':
