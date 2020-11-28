@@ -184,11 +184,10 @@ class QuarkParser:
             self, binding_identifiers: List[str], body_expression: AnyExpressionType
     ) -> LambdaExpression:
         if binding_identifiers:
-            ret = LambdaExpression(
+            return LambdaExpression(
                 binding_identifiers[0],
                 self._make_desugared_lambda_expression(binding_identifiers[1:], body_expression)
             )
-            return ret
         else:
             return body_expression
 
@@ -232,15 +231,6 @@ class QuarkParser:
         self._consume_token()
         return ListExpression(items)
 
-    @staticmethod
-    def _restore_left_associativity(expr: BinaryExpression):  # todo: explain myself...
-        while isinstance(expr.rhs_expr, BinaryExpression) and \
-                expr.rhs_expr.operand.precedence == expr.operand.precedence:
-            expr.rhs_expr.lhs_expr, expr.rhs_expr.rhs_expr = expr.rhs_expr.rhs_expr, expr.rhs_expr.lhs_expr
-            expr.rhs_expr.operand, expr.operand = expr.operand, expr.rhs_expr.operand
-            expr.rhs_expr.lhs_expr, expr.lhs_expr = expr.lhs_expr, expr.rhs_expr.lhs_expr
-            expr.rhs_expr, expr.lhs_expr = expr.lhs_expr, expr.rhs_expr
-
     def _parse_logical_arithmetic_expression(self, precedence: Union[int, None] = 1):
         """
         Precedence of quark operators from lowest to highest
@@ -258,11 +248,11 @@ class QuarkParser:
         """
         if precedence == 1:
             return self._parse_binary_expression(
-                precedence, (TokenTypes.XOR, TokenTypes.OR), is_left_associative=True
+                precedence, (TokenTypes.XOR, TokenTypes.OR)
             )
         elif precedence == 2:
             return self._parse_binary_expression(
-                precedence, (TokenTypes.AND,), is_left_associative=True
+                precedence, (TokenTypes.AND,)
             )
         elif precedence == 3:
             return self._parse_unary_expression(
@@ -273,18 +263,18 @@ class QuarkParser:
                 precedence, (
                     TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER_EQUAL,
                     TokenTypes.LESS_EQUAL, TokenTypes.GREATER, TokenTypes.LESS
-                ), is_left_associative=True
+                )
             )
         elif precedence == 5:
             return self._parse_binary_expression(
-                precedence, (TokenTypes.PLUS, TokenTypes.MINUS), is_left_associative=True
+                precedence, (TokenTypes.PLUS, TokenTypes.MINUS)
             )
         elif precedence == 6:
             return self._parse_binary_expression(
                 precedence, (
                     TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.PERCENT,
                     TokenTypes.SLASH_PERCENT
-                ), is_left_associative=True
+                )
             )
         elif precedence == 7:
             return self._parse_unary_expression(
@@ -310,16 +300,24 @@ class QuarkParser:
             return self._parse_application_expression()
 
     def _parse_binary_expression(
-            self, precedence: int, operators: Tuple[TokenTypes, ...], is_left_associative=False
+            self, precedence: int, operators: Tuple[TokenTypes, ...]
     ) -> Union[BinaryExpression, AnyExpressionType]:
         lhs_expr = self._parse_logical_arithmetic_expression(precedence + 1)
         if self._match_any_from(*operators):
             operand = self._current_token
             self._consume_token()
-            rhs_expr = self._parse_binary_expression(precedence, operators)
-            expr = BinaryExpression(lhs_expr, operand, rhs_expr)
-            if is_left_associative:
-                self._restore_left_associativity(expr)
+            if operand.is_left_associative():
+                rhs_expr = self._parse_logical_arithmetic_expression(precedence + 1)
+                expr = BinaryExpression(lhs_expr, operand, rhs_expr)
+                while self._match_any_from(*operators):
+                    operand = self._current_token
+                    self._consume_token()
+                    expr = BinaryExpression(
+                        expr, operand, self._parse_logical_arithmetic_expression(precedence + 1)
+                    )
+            else:
+                rhs_expr = self._parse_binary_expression(precedence, operators)
+                expr = BinaryExpression(lhs_expr, operand, rhs_expr)
             return expr
         else:
             return lhs_expr
