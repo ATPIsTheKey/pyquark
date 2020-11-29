@@ -65,10 +65,13 @@ tok_type_names = (
     'EXCLAMATION_EQUAL',
     'AND',
     'OR',
+    'DOUBLE_COLON_EQUAL',
     'operator_end',
 
     # Keyword tokens
     'keyword_beg',
+    'CASE',
+    'OF',
     'IF',
     'THEN',
     'ELIF',
@@ -154,13 +157,17 @@ double_char_tokens = {
 }
 
 
-triple_char_tokens = {}
+triple_char_tokens = {
+    '::=': TokenTypes.DOUBLE_COLON_EQUAL
+}
 
 
 keyword_tokens = {
     'not': TokenTypes.NOT,
     'and': TokenTypes.AND,
     'or': TokenTypes.OR,
+    'case': TokenTypes.CASE,
+    'of': TokenTypes.OF,
     'xor': TokenTypes.XOR,
     'head': TokenTypes.HEAD,
     'tail': TokenTypes.TAIL,
@@ -260,7 +267,37 @@ class Token:
 
     @property
     def precedence(self):
-        return get_token_type_precedence(self.type)
+        if self.type in {TokenTypes.OR, TokenTypes.XOR}:
+            return 1
+        elif self.type == TokenTypes.AND:
+            return 2
+        elif self.type == TokenTypes.NOT:
+            return 3
+        elif self.type in {
+            TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER,
+            TokenTypes.LESS,
+            TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
+        }:
+            return 4
+        elif self.type in (TokenTypes.PLUS, TokenTypes.MINUS):
+            return 5
+        elif self.type in {
+            TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.SLASH_PERCENT,
+            TokenTypes.PERCENT
+        }:
+            return 6
+        elif self.type == TokenTypes.DOUBLE_STAR:
+            return 7
+        elif self.type == TokenTypes.NIL:
+            return 8
+        elif self.type in {TokenTypes.HEAD, TokenTypes.TAIL}:
+            return 9
+        elif self.type == TokenTypes.VERTICAL_BAR:
+            return 10
+        elif self.type == TokenTypes.ON:
+            return 11
+        else:
+            return -1  # default
 
     def __str__(self):
         return f'<{self.type.name}>: {repr(self.raw)} at {self.pos}'
@@ -273,7 +310,3 @@ class Token:
 
     def __hash__(self):
         return hash((self.type, self.raw, self.pos))
-
-
-if __name__ == '__main__':
-    pass

@@ -370,7 +370,7 @@ class ApplicationExpression(Expression):
             return result
 
     def __repr__(self):
-        return f'({self.function.__repr__()})({self.argument.__repr__()})'
+        return f'({self.function.__repr__()} {self.argument.__repr__()})'
 
     @property
     def node_dict_repr(self) -> dict:
