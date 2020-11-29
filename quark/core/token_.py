@@ -200,39 +200,6 @@ all_tokens = {
 }
 
 
-def get_token_type_precedence(type_: TokenTypes) -> int:
-    if type_ in {TokenTypes.OR, TokenTypes.XOR}:
-        return 1
-    elif type_ == TokenTypes.AND:
-        return 2
-    elif type_ == TokenTypes.NOT:
-        return 3
-    elif type_ in {
-        TokenTypes.DOUBLE_EQUAL, TokenTypes.EXCLAMATION_EQUAL, TokenTypes.GREATER, TokenTypes.LESS,
-        TokenTypes.GREATER_EQUAL, TokenTypes.LESS_EQUAL
-    }:
-        return 4
-    elif type_ in (TokenTypes.PLUS, TokenTypes.MINUS):
-        return 5
-    elif type_ in {
-        TokenTypes.STAR, TokenTypes.SLASH, TokenTypes.DOUBLE_SLASH, TokenTypes.SLASH_PERCENT,
-        TokenTypes.PERCENT
-    }:
-        return 6
-    elif type_ == TokenTypes.DOUBLE_STAR:
-        return 7
-    elif type_ == TokenTypes.NIL:
-        return 8
-    elif type_ in {TokenTypes.HEAD, TokenTypes.TAIL}:
-        return 9
-    elif type_ == TokenTypes.VERTICAL_BAR:
-        return 10
-    elif type_ == TokenTypes.ON:
-        return 11
-    else:
-        return -1  # default
-
-
 class Token:
     def __init__(self, type_: TokenTypes, value: str, pos: Tuple[int, int]):
         self.raw = value
@@ -264,6 +231,14 @@ class Token:
 
     def is_separator(self) -> bool:
         return TokenTypes.separator_beg < self.type < TokenTypes.separator_end
+
+    @property
+    def col_pos(self):
+        return self.pos[0]
+
+    @property
+    def line_pos(self):
+        return self.pos[1]
 
     @property
     def precedence(self):

@@ -1,4 +1,5 @@
 *** Working
+
 let x = 1 in let y = 3 in x + y;
 a, b, c = \ x . x, \ y . y * y, \ z . z ** z
 a @ b @ c 2
@@ -11,15 +12,15 @@ a @ b @ c 2
 (\ x. \ y. x + (\ x. x * 1) y) 2 3
 (\x.x) 1 2
 (\ x. \y. \z. x + y + z) 1 2
-(\f.f(2))(\x.x + 2)
+(\f . f 2)(\x . x + 2)
 (\f.\y.f(y)) (\x.x + 2) 3
 (let a = 2 in \x.x+a) 2
 plus1 = (\ y. \x. x + y) 1; plus1 2
-let a = 2 in (\ x. \y. \z. x + y + z) 1  2 a
+let a = 2 in (\ x. \y. \z. x + y + z) 1 2 a
 y = \ f. (\ x. f x x)(\ x. f x x)
 gcd = \ a. \ b. if b == 0 then a else gcd b a % b
 fac = \n . if n == 1 then 1 else n * fac n - 1
-let fac = \n . if n == 1 then 1 else n * fac n - 1 in fac 4
-ack = \ x. \ y. if x == 0 then y + 1 elif y == 0 then ack x - 1 1 else ack 1 (ack x y - 1)
+let fac = \n . if n == 1 then 1 else n * fac (n - 1) in fac 4
+let ack = \ m. \ n. if m == 0 then n + 1 elif n == 0 then ack (m - 1) 1 else ack (m - 1) (ack m (n - 1)) in ack 1 1
 
 *** Not working

@@ -11,25 +11,26 @@ import functools
 import itertools
 from collections import namedtuple
 import abc
-from typing import Union, Tuple, List, Deque, Callable, Any
+from typing import Union, List, Callable
 import json
 
 __all__ = [
-    'StatementList', 'ImportStatement', 'ExportStatement', 'LetExpression', 'LambdaExpression',
-    'ConditionalExpression', 'ApplicationExpression', 'BinaryExpression', 'UnaryExpression',
-    'AtomExpression',
-    'ExpressionList', 'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType',
+    'StatementList', 'ImportStatement', 'ExportStatement', 'LetExpression',
+    'LambdaExpression', 'ConditionalExpression', 'ApplicationExpression',
+    'BinaryExpression', 'UnaryExpression', 'AtomExpression', 'ExpressionList',
+    'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType',
     'ListExpression'
 ]
 
 AnyAstNodeType = Union[
     'LetExpression', 'LambdaExpression', 'IfThenElseExpression', 'ApplicationExpression',
-    'BinaryExpression', 'UnaryExpression', 'ExpressionList', 'ImportStatement', 'ExportStatement', 'AnyExpressionType'
+    'BinaryExpression', 'UnaryExpression', 'ExpressionList', 'ImportStatement',
+    'ExportStatement', 'AnyExpressionType'
 ]
 
 AnyExpressionType = Union[
-    'LetExpression', 'FunExpression', 'LambdaExpression', 'IfThenElseExpression', 'ApplicationExpression',
-    'BinaryExpression', 'UnaryExpression', 'ExpressionList'
+    'LetExpression', 'FunExpression', 'LambdaExpression', 'IfThenElseExpression',
+    'ApplicationExpression', 'BinaryExpression', 'UnaryExpression', 'ExpressionList'
 ]
 
 AnyStatementType = Union[
@@ -45,18 +46,19 @@ ExecutionResult = namedtuple('ExecutionResult', ('type', 'val'))
 
 class ASTNode(abc.ABC):
     @abc.abstractmethod
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         raise NotImplementedError
 
     @property
-    def node_json_repr(self) -> str:
-        return json.dumps(self.node_dict_repr)
+    def json_repr(self) -> str:
+        return json.dumps(self.dict_repr)
 
 
 class Statement(ASTNode, abc.ABC):
     @abc.abstractmethod
-    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None,
-                **context) -> ExecutionResult:
+    def execute(
+            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+    ) -> ExecutionResult:
         raise NotImplementedError
 
 
@@ -90,10 +92,10 @@ class StatementList(ASTNode, list):
         return [stmt.execute(closure, callstack) for stmt in self]
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'statements': [stmt.node_dict_repr for stmt in self]
+            'statements': [stmt.dict_repr for stmt in self]
         }
 
 
@@ -107,11 +109,11 @@ class ImportStatement(Statement):
         return ExecutionResult(NoneType, None)
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'package_names': self.package_names.node_dict_repr,
-            'alias_names': self.alias_names.node_dict_repr if self.alias_names else None
+            'package_names': self.package_names.dict_repr,
+            'alias_names': self.alias_names.dict_repr if self.alias_names else None
         }
 
 
@@ -126,11 +128,11 @@ class ExportStatement(Statement):
         raise NotImplementedError
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'package_names': self.package_names.node_dict_repr,
-            'alias_names': self.alias_names.node_dict_repr if self.alias_names else None
+            'package_names': self.package_names.dict_repr,
+            'alias_names': self.alias_names.dict_repr if self.alias_names else None
         }
 
 
@@ -154,11 +156,11 @@ class AssignmentStatement(Statement):
         )
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'names': self.identifiers.node_dict_repr,
-            'values': self.expr_values.node_dict_repr
+            'names': self.identifiers.dict_repr,
+            'values': self.expr_values.dict_repr
         }
 
 
@@ -173,30 +175,24 @@ class LetExpression(Expression):
 
     @functools.cached_property
     def variables(self) -> set:
-        return (
-            functools.reduce(
-                lambda x, y: x | y.variables, self.initialiser_expressions, initial=set()
-            ) |
+        return functools.reduce(
+            lambda x, y: x | y.variables, self.initialiser_expressions,
             self.body_expression.variables
         )
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return (
-            self.body_expression.free_variables - set(self.binding_identifiers.only_raw_ids) |
-            functools.reduce(
-                lambda x, y: x | y.free_variables, self.initialiser_expressions, initial=set()
-            )
-        )
+        return functools.reduce(
+            lambda x, y: x | y.free_variables, self.initialiser_expressions,
+            self.body_expression.free_variables
+        ) - set(self.binding_identifiers.only_raw_ids)
 
     @functools.cached_property
     def bound_variables(self) -> set:
-        return (
-            self.body_expression.bound_variables & set(self.binding_identifiers.only_raw_ids) |
-            functools.reduce(
-                lambda x, y: x | y.bound_variables, self.initialiser_expressions, initial=set()
-            )
-        )
+        return functools.reduce(
+            lambda x, y: x | y.bound_variables, self.initialiser_expressions,
+            self.body_expression.bound_variables
+        ) & set(self.binding_identifiers.only_raw_ids)
 
     def execute(
             self, closure: dict, callstack: List[AnyExpressionType] = None, **context
@@ -214,12 +210,12 @@ class LetExpression(Expression):
         )
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'binding_variables': self.binding_identifiers.node_dict_repr,
-            'initialiser_expressions': self.initialiser_expressions.node_dict_repr,
-            'body_expression': self.body_expression.node_dict_repr
+            'binding_variables': self.binding_identifiers.dict_repr,
+            'initialiser_expressions': self.initialiser_expressions.dict_repr,
+            'body_expression': self.body_expression.dict_repr
         }
 
 
@@ -248,12 +244,12 @@ class LambdaExpression(Expression):
             self, closure: dict, callstack: List[AnyExpressionType] = None, **context
     ) -> ExecutionResult:
         closure_copy = closure.copy()
-        base_closure = context['base_closure'] if 'base_closure' in context.keys() else closure
+        base_closure = context.get('base_closure') or closure
         if callstack:
             name, expr = self.binding_identifier, callstack.pop()
             closure_copy[name] = (expr, base_closure if name in closure_copy.keys() else None)
         if callstack:
-            #  If the callstack is not empty, not all arguments my be bound in the closure and hence
+            #  If the callstack is non empty, not all arguments may be bound in the closure and hence
             #  we cannot use the new closure in evaluating the body expression.
             #  todo: may lead to bugs
             return self.body_expression.execute(closure_copy, callstack, base_closure=closure)
@@ -264,11 +260,11 @@ class LambdaExpression(Expression):
         return f"\\ {self.binding_identifier}. {self.body_expression.__repr__()}"
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'bound_variable': self.binding_identifier,
-            'body_expression': self.body_expression.node_dict_repr
+            'body_expression': self.body_expression.dict_repr
         }
 
 
@@ -330,12 +326,12 @@ class ConditionalExpression(Expression):
         return fmt
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'condition': self.condition.node_dict_repr,
-            'consequent': self.consequent.node_dict_repr,
-            'alternative': self.alternative.node_dict_repr if self.alternative else None
+            'condition': self.condition.dict_repr,
+            'consequent': self.consequent.dict_repr,
+            'alternative': self.alternative.dict_repr if self.alternative else None
         }
 
 
@@ -373,11 +369,11 @@ class ApplicationExpression(Expression):
         return f'({self.function.__repr__()} {self.argument.__repr__()})'
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'function': self.function.node_dict_repr,
-            'argument': self.argument.node_dict_repr
+            'function': self.function.dict_repr,
+            'argument': self.argument.dict_repr
         }
 
 
@@ -461,16 +457,16 @@ class BinaryExpression(Expression):
         )
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'lhs_expr': (
-                self.lhs_expr.node_dict_repr if isinstance(self.lhs_expr, Expression) else
+                self.lhs_expr.dict_repr if isinstance(self.lhs_expr, Expression) else
                 self.lhs_expr
             ),
             'operand': repr(self.operand),
             'rhs_expr': (
-                self.rhs_expr.node_dict_repr if isinstance(self.lhs_expr, Expression) else
+                self.rhs_expr.dict_repr if isinstance(self.lhs_expr, Expression) else
                 self.rhs_expr
             ),
         }
@@ -512,11 +508,11 @@ class UnaryExpression(Expression):
         )
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'operand': repr(self.operand),
-            'expr': self.expr.node_dict_repr
+            'expr': self.expr.dict_repr
         }
 
 
@@ -526,15 +522,15 @@ class ListExpression(Expression):
 
     @functools.cached_property
     def variables(self) -> set:
-        return functools.reduce(lambda x, y: x | y.variables, self.items, initial=set())
+        return functools.reduce(lambda x, y: x | y.variables, self.items, set())
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return functools.reduce(lambda x, y: x | y.free_variables, self.items, initial=set())
+        return functools.reduce(lambda x, y: x | y.free_variables, self.items, set())
 
     @functools.cached_property
     def bound_variables(self) -> set:
-        return functools.reduce(lambda x, y: x | y.bound_variables, self.items, initial=set())
+        return functools.reduce(lambda x, y: x | y.bound_variables, self.items, set())
 
     def execute(
             self, closure: dict, callstack: List[AnyExpressionType] = None, **context
@@ -545,10 +541,10 @@ class ListExpression(Expression):
         return f"[{', '.join(item.__repr__() for item in self.items)}]"
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'exprs': [item.node_dict_repr for item in self.items]
+            'exprs': [item.dict_repr for item in self.items]
         }
 
 
@@ -595,7 +591,7 @@ class AtomExpression(Expression):
         return self.raw
 
     @functools.cached_property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'type': repr(self.type),
@@ -617,10 +613,10 @@ class ExpressionList(ASTNode, list):
         return f"{', '.join(repr(item) for item in self)}"
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'expressions': [expr.node_dict_repr for expr in self]
+            'expressions': [expr.dict_repr for expr in self]
         }
 
 
@@ -635,7 +631,7 @@ class IdList(ASTNode, list):
         return f"{', '.join(id_ for id_ in self)}"
 
     @property
-    def node_dict_repr(self) -> dict:
+    def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'identifiers': [repr(id_) for id_ in self]

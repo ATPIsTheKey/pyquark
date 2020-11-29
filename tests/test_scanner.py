@@ -1,10 +1,10 @@
-import unittest
-
-
-class MyTestCase(unittest.TestCase):
-    def test_something(self):
-        self.assertEqual(True, False)
+from quark.core.scanner import QuarkScanner
 
 
 if __name__ == '__main__':
-    unittest.main()
+    test = ';'
+    lexer = QuarkScanner(test)
+    while test := input('>>> '):
+        lexer.reset(test)
+        for t in lexer.get_tokens():
+            print(repr(t))

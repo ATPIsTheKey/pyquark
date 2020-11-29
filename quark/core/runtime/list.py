@@ -1,20 +1,14 @@
-from quark.core.util.pytypehints import LiteralType
-from quark.core.util.datastructs import FlattenedPair
-
 from typing import Union, Tuple
 
 
-class ListObject(FlattenedPair):
-    def __init__(self, head: LiteralType, tail: Union['ListObject', None]):
-        super().__init__(head, tail)
-
+class ListObject(list):  # todo
     @property
     def head(self):
-        return self._left
+        return self[0]
 
     @property
     def tail(self):
-        return self._right
+        return self[1:]
 
     @property
     def is_nil(self):

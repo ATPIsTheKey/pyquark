@@ -16,13 +16,11 @@ class QuarkScannerError(Exception):
 
 class QuarkScanner:
     def __init__(self, source: str, ignore_skippables: bool = True):
-        self._source = source
-
-        self._ignore_skippables = ignore_skippables
-
+        self._source_chars = source
         self._source_len = len(source)
         self._source_start, self._source_pos = 0, 0
         self._column_pos, self._line_pos = 0, 0
+        self._ignore_skippables = ignore_skippables
 
     def reset(self, source: str, ignore_skippables: bool = True):
         self.__init__(source, ignore_skippables)
@@ -34,26 +32,25 @@ class QuarkScanner:
     @property
     def _current_char(self) -> str:
         return (
-            self._source[self._source_pos] if not self._reached_end_of_source() else
+            self._source_chars[self._source_pos] if not self._reached_end_of_source() else
             None
         )
 
     def _current_nchars(self, n: int) -> str:
         return (
-            self._source[self._source_pos:self._source_pos + n] if not self._reached_end_of_source(
-                off=n - 1
-            ) else
+            self._source_chars[self._source_pos:self._source_pos + n] if not
+            self._reached_end_of_source(off=n - 1) else
             None
         )
 
     @property
     def _consumed_chars(self) -> str:
-        return self._source[self._source_start:self._source_pos]
+        return self._source_chars[self._source_start:self._source_pos]
 
     def _match(self, s: str) -> bool:
         return (
-                False if self._reached_end_of_source(off=len(s) - 1) else
-                self._source[self._source_pos:self._source_pos + len(s)] == s
+            False if self._reached_end_of_source(off=len(s) - 1) else
+            self._source_chars[self._source_pos:self._source_pos + len(s)] == s
         )
 
     def _expect(self, s: str, not_met_msg: str):
@@ -61,8 +58,15 @@ class QuarkScanner:
             self._fmt_and_raise_syntax_error(not_met_msg)
 
     def _fmt_and_raise_syntax_error(self, msg: str):
+        remaining_chars_in_line = ''
+        for c in self._source_chars[self._source_pos + 1:]:
+            if c == '\n':
+                return
+            else:
+                remaining_chars_in_line += c
         raise QuarkScannerError(
-            f'SyntaxError at {self._current_pos}: {msg}'
+            f'LexicalError at {self._current_pos}: {msg}\n'
+            f'Remaining chars in line: {remaining_chars_in_line}'
         )
 
     def _consume_char(self):
@@ -200,6 +204,7 @@ class QuarkScanner:
             self._fmt_and_raise_syntax_error(
                 f'invalid character {repr(self._current_char)} in identifier'
             )
+            return
 
         ret = Token(type_, self._consumed_chars, pos)
         self._discard_consumed_chars()
@@ -214,10 +219,3 @@ class QuarkScanner:
     def get_tokens(self) -> Generator[Token, None, None]:
         while not self._reached_end_of_source():
             yield self.next_token()
-
-
-if __name__ == '__main__':
-    lexer = QuarkScanner('', ignore_skippables=False)
-    while test := input('>>> '):
-        lexer.reset(test, ignore_skippables=False)
-        print('\n'.join(repr(t) for t in lexer.tokens()))
