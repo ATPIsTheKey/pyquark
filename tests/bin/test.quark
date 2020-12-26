@@ -1,26 +1,34 @@
-*** Working
+defun gcd :: a, b => ?(
+    a             | b == 0,
+    gcd(b, a % b) | ...
+)
 
-let x = 1 in let y = 3 in x + y;
-a, b, c = \ x . x, \ y . y * y, \ z . z ** z
-a @ b @ c 2
-(\ x. \ y. x + y) 1 2
-(\ x. \ y. x + y) 1 2
-(\ f . f(2))(\ x. x + 1)
-(\ x.x)(\ y.y ** 2) 1 2 3 4
-(\x. (\x. + (* x 1)) x 2) 3.
-(\ y. \x. x + y)
-(\ x. \ y. x + (\ x. x * 1) y) 2 3
-(\x.x) 1 2
-(\ x. \y. \z. x + y + z) 1 2
-(\f . f 2)(\x . x + 2)
-(\f.\y.f(y)) (\x.x + 2) 3
-(let a = 2 in \x.x+a) 2
-plus1 = (\ y. \x. x + y) 1; plus1 2
-let a = 2 in (\ x. \y. \z. x + y + z) 1 2 a
-y = \ f. (\ x. f x x)(\ x. f x x)
-gcd = \ a. \ b. if b == 0 then a else gcd b a % b
-fac = \n . if n == 1 then 1 else n * fac n - 1
-let fac = \n . if n == 1 then 1 else n * fac (n - 1) in fac 4
-let ack = \ m. \ n. if m == 0 then n + 1 elif n == 0 then ack (m - 1) 1 else ack (m - 1) (ack m (n - 1)) in ack 1 1
+defun gcd :: a, b => ?( a | b == 0, gcd(b, a % b) | ...)
+defun fact :: n => 1 if n == 1 else n * fact(n - 1)
+defun fact :: n => ?( 1 | n == 1, n * fact(n - 1) * n | ...)
 
-*** Not working
+defun plus :: a, b => a + b
+fun :: a => fun :: b, c => a + b + c
+
+def (a = 2, b = 3)
+let a = 3 in a + a
+
+(fun :: x => x)(1)
+(fun :: a, b => a + b)(1, 2)
+(fun :: a => fun :: b => a + b)(1, 2)
+?(a | a == 2, b | a == 1, c | a == 0, d | ...)
+(let a, b = 1, 2 in fun :: x => a + b + x)(1)
+
+def Y = fun :: f => (fun :: x => f(x(x)))(fun :: x => f(x(x)))
+
+let fact = fun :: n => ?( 1 | n == 1, n * fact(n - 1) | ...) in fact(2)
+let factplusx = fun :: n, x => ?(1 + x | n == 1 , factplpusx(n - 1, x) * n + x | ...)) in factplusx(2, 2)
+let fact = Y(fun :: f => fun :: n => ?(1 | n == 1 , f(n - 1) * n | ...)) in fact(3)
+let factplusx = Y(fun :: f => fun :: n, x => ?(1 + x | n == 1 , f(n - 1, x) * n + x | ...)) in factplusx(2, 2)
+let gcd = fun :: a, b => ?( a | b == 0, gcd(b, a % b) | ...) in gcd (14, 14)
+let gcd = Y(fun :: f => fun :: a, b => ?( a | b == 0, f(b, a % b) | ...)) in gcd (1, 1)
+def ack = fun :: m, n => ?( n + 1 | m == 0, ack(m - 1, 1) | n == 0, ack(m - 1, ack(m, n - 1))  | ...)
+
+// not working
+
+defun pair :: a, b, f => (f(a, b)); defun first :: a, b => a; defun second :: a, b => b
