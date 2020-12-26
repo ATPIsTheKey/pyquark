@@ -12,14 +12,15 @@ import itertools
 from collections import namedtuple
 import abc
 from typing import Union, List, Callable
+from copy import copy
 import json
 
 __all__ = [
     'StatementList', 'ImportStatement', 'ExportStatement', 'LetExpression',
-    'LambdaExpression', 'ConditionalExpression', 'ApplicationExpression',
+    'FunctionExpression', 'ConditionalExpression', 'ApplicationExpression',
     'BinaryExpression', 'UnaryExpression', 'AtomExpression', 'ExpressionList',
     'IdList', 'AssignmentStatement', 'AnyExpressionType', 'AnyStatementType',
-    'ListExpression'
+    'ListExpression', 'Expression', 'Statement'
 ]
 
 AnyAstNodeType = Union[
@@ -33,9 +34,7 @@ AnyExpressionType = Union[
     'ApplicationExpression', 'BinaryExpression', 'UnaryExpression', 'ExpressionList'
 ]
 
-AnyStatementType = Union[
-    'ImportStatement', 'ExportStatement', 'AnyExpressionType'
-]
+AnyStatementType = Union['ImportStatement', 'ExportStatement', 'AnyExpressionType']
 
 LiteralType = type('LiteralType', (), {})()
 
@@ -57,7 +56,8 @@ class ASTNode(abc.ABC):
 class Statement(ASTNode, abc.ABC):
     @abc.abstractmethod
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, parent_closure: dict,
+            callstack: List[AnyExpressionType] = None
     ) -> ExecutionResult:
         raise NotImplementedError
 
@@ -87,9 +87,10 @@ class StatementList(ASTNode, list):
     append: Callable[[AnyStatementType], None]
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None,
+            parent_closure: dict = None
     ) -> List[ExecutionResult]:
-        return [stmt.execute(closure, callstack) for stmt in self]
+        return [stmt.execute(closure, callstack, parent_closure) for stmt in self]
 
     @property
     def dict_repr(self) -> dict:
@@ -104,8 +105,10 @@ class ImportStatement(Statement):
         self.package_names = package_names
         self.alias_names = alias_names
 
-    def execute(self, closure: dict, callstack: List[AnyExpressionType] = None,
-                **context) -> ExecutionResult:
+    def execute(
+            self, closure: dict, callstack: List[AnyExpressionType] = None,
+            parent_closure: dict = None
+    ) -> ExecutionResult:
         return ExecutionResult(NoneType, None)
 
     @property
@@ -123,7 +126,7 @@ class ExportStatement(Statement):
         self.alias_names = alias_names
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, parent_closure: dict,callstack: List[AnyExpressionType] = None
     ) -> ExecutionResult:
         raise NotImplementedError
 
@@ -137,39 +140,37 @@ class ExportStatement(Statement):
 
 
 class AssignmentStatement(Statement):
-    def __init__(self, identifiers: 'IdList', expr_values: 'ExpressionList'):
-        self.identifiers = identifiers
-        self.expr_values = expr_values
+    def __init__(self, names: 'IdList', exprs: 'ExpressionList'):
+        self.names = names
+        self.exprs = exprs
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         closure_copy = closure.copy()
-        for name, expr in zip(self.identifiers.only_raw_ids, self.expr_values):
+        for name, expr in zip(self.names.raw, self.exprs):
             closure[name] = (expr, closure_copy if name in closure.keys() else None)
         return ExecutionResult(NoneType, None)
 
     def __repr__(self):
-        return (
-            f"{', '.join(self.identifiers.only_raw_ids)} = "
-            F"{', '.join(expr.__repr__() for expr in self.expr_values)}"
-        )
+        return f"def ({', '.join(f'{name.raw} = {expr}' for name, expr in zip(self.names, self.exprs))})"
 
     @property
     def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'names': self.identifiers.dict_repr,
-            'values': self.expr_values.dict_repr
+            'names': self.names.dict_repr,
+            'value': self.exprs.dict_repr
         }
 
 
 class LetExpression(Expression):
     def __init__(
-            self, binding_variables: 'IdList', initialiser_expressions: 'ExpressionList',
+            self, names: 'IdList', initialiser_expressions: 'ExpressionList',
             body_expression: Union[AnyExpressionType, None]
     ):
-        self.binding_identifiers = binding_variables
+        self.names = names
         self.initialiser_expressions = initialiser_expressions
         self.body_expression = body_expression
 
@@ -185,27 +186,28 @@ class LetExpression(Expression):
         return functools.reduce(
             lambda x, y: x | y.free_variables, self.initialiser_expressions,
             self.body_expression.free_variables
-        ) - set(self.binding_identifiers.only_raw_ids)
+        ) - set(self.names.raw)
 
     @functools.cached_property
     def bound_variables(self) -> set:
         return functools.reduce(
             lambda x, y: x | y.bound_variables, self.initialiser_expressions,
             self.body_expression.bound_variables
-        ) & set(self.binding_identifiers.only_raw_ids)
+        ) & set(self.names.raw)
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         closure_copy = closure.copy()
-        for name, expr in zip(self.binding_identifiers, self.initialiser_expressions):
+        for name, expr in zip(self.names.raw, self.initialiser_expressions):
             closure_copy[name] = (expr, None)
         result = self.body_expression.execute(closure_copy, callstack)
         return result if result.type == LiteralType else ExecutionResult(LetExpression, self)
 
     def __repr__(self):
         return (
-            f'let {self.binding_identifiers.__repr__()} = '
+            f'let {self.names.__repr__()} = '
             f'{self.initialiser_expressions.__repr__()} in {self.body_expression.__repr__()}'
         )
 
@@ -213,15 +215,15 @@ class LetExpression(Expression):
     def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'binding_variables': self.binding_identifiers.dict_repr,
+            'binding_variables': self.names.dict_repr,
             'initialiser_expressions': self.initialiser_expressions.dict_repr,
             'body_expression': self.body_expression.dict_repr
         }
 
 
-class LambdaExpression(Expression):
-    def __init__(self, binding_identifier: str, body_expression: AnyExpressionType):
-        self.binding_identifier = binding_identifier
+class FunctionExpression(Expression):
+    def __init__(self, argument_names: 'IdList', body_expression: AnyExpressionType):
+        self.argument_names = argument_names
         self.body_expression = body_expression
 
     @functools.cached_property
@@ -230,40 +232,62 @@ class LambdaExpression(Expression):
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return self.body_expression.free_variables - set(self.binding_identifier)
+        return self.body_expression.free_variables - set(self.argument_names.raw)
 
     @functools.cached_property
     def bound_variables(self) -> set:
-        return set(self.binding_identifier) & self.body_expression.bound_variables
+        return set(self.argument_names.raw) & self.body_expression.free_variables
 
-    @staticmethod
-    def make_y_combinator() -> 'LambdaExpression':
-        raise NotImplementedError
+    def uncurry(self):
+        if isinstance(self.body_expression, FunctionExpression):
+            self.argument_names.extend(self.body_expression.uncurried.argument_names)
+            self.body_expression = self.body_expression.uncurried.body_expression
+
+    @functools.cached_property
+    def uncurried(self) -> 'FunctionExpression':
+        self_copy = copy(self)
+        self_copy.uncurry()
+        return self_copy
+
+    def curry(self):
+        for name in reversed(self.argument_names[1:]):
+            self.body_expression = FunctionExpression(IdList([name]), self.body_expression)
+        self.argument_names = IdList(self.argument_names[:1])
+
+    @functools.cached_property
+    def curried(self) -> 'FunctionExpression':
+        self_copy = copy(self)
+        self_copy.curry()
+        return self_copy
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         closure_copy = closure.copy()
-        base_closure = context.get('base_closure') or closure
         if callstack:
-            name, expr = self.binding_identifier, callstack.pop()
-            closure_copy[name] = (expr, base_closure if name in closure_copy.keys() else None)
+            for name in self.argument_names.raw:
+                closure_copy[name] = (
+                    callstack.pop(),
+                    (parent_closure if parent_closure else closure)
+                    if name in closure_copy.keys() else None
+                )
         if callstack:
-            #  If the callstack is non empty, not all arguments may be bound in the closure and hence
-            #  we cannot use the new closure in evaluating the body expression.
-            #  todo: may lead to bugs
-            return self.body_expression.execute(closure_copy, callstack, base_closure=closure)
+            return self.body_expression.execute(closure_copy, callstack, closure)
         else:
             return self.body_expression.execute(closure_copy, callstack)
 
     def __repr__(self):
-        return f"\\ {self.binding_identifier}. {self.body_expression.__repr__()}"
+        return (
+            f'fun :: {self.argument_names.__repr__()}'
+            f' => {self.body_expression.__repr__()}'
+        )
 
     @property
     def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'bound_variable': self.binding_identifier,
+            'argument_names': self.argument_names.dict_repr,
             'body_expression': self.body_expression.dict_repr
         }
 
@@ -308,7 +332,8 @@ class ConditionalExpression(Expression):
             return self.condition.bound_variables | self.consequent.bound_variables
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         condition_result = self.condition.execute(closure)
         if condition_result.type == LiteralType:
@@ -336,44 +361,53 @@ class ConditionalExpression(Expression):
 
 
 class ApplicationExpression(Expression):
-    def __init__(self, function: AnyExpressionType, argument: 'Expression'):
+    def __init__(self, function: AnyExpressionType, arguments: 'ExpressionList'):
         self.function = function
-        self.argument = argument
+        self.arguments = arguments
 
     @functools.cached_property
     def variables(self) -> set:
-        return self.function.variables | self.argument.variables
+        return functools.reduce(
+            lambda x, y: x | y.variables, self.arguments, self.function.variables
+        )
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return self.function.free_variables | self.argument.free_variables
+        return functools.reduce(
+            lambda x, y: x | y.free_variables, self.arguments,
+            self.function.free_variables
+        )
 
     @functools.cached_property
     def bound_variables(self) -> set:
-        return self.function.bound_variables | self.argument.bound_variables
+        return functools.reduce(
+            lambda x, y: x | y.bound_variables, self.arguments,
+            self.function.bound_variables
+        )
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         if callstack:
-            callstack.append(self.argument)
-            result = self.function.execute(closure, callstack)
+            callstack.extend(list(reversed(self.arguments)))  # todo: reversed? Why called stack then
         else:
-            result = self.function.execute(closure, [self.argument])
+            callstack = list(reversed(self.arguments))
+        result = self.function.execute(closure, callstack)
         if result.type is not LiteralType:
             return ExecutionResult(ApplicationExpression, self)
         else:
             return result
 
     def __repr__(self):
-        return f'({self.function.__repr__()} {self.argument.__repr__()})'
+        return f'({self.function.__repr__()})({self.arguments.__repr__()})'
 
     @property
     def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
             'function': self.function.dict_repr,
-            'argument': self.argument.dict_repr
+            'arguments': self.arguments.dict_repr
         }
 
 
@@ -435,13 +469,15 @@ class BinaryExpression(Expression):
         return self.lhs_expr.bound_variables | self.rhs_expr.bound_variables
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         if self.free_variables.issubset(closure.keys()):
             left_result = self.lhs_expr.execute(closure)
             right_result = self.rhs_expr.execute(closure)
             return ExecutionResult(
-                LiteralType, _token_binary_operation_mapping[self.operand.type](
+                LiteralType,
+                _token_binary_operation_mapping[self.operand.type](
                     left_result.val, right_result.val
                 )
             )
@@ -490,7 +526,8 @@ class UnaryExpression(Expression):
         return self.expr.bound_variables
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         if self.free_variables.issubset(closure.keys()):
             result = self.expr.execute(closure)
@@ -533,7 +570,8 @@ class ListExpression(Expression):
         return functools.reduce(lambda x, y: x | y.bound_variables, self.items, set())
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
         raise NotImplementedError
 
@@ -549,68 +587,61 @@ class ListExpression(Expression):
 
 
 class AtomExpression(Expression):
-    def __init__(self, raw: 'str', type_: TokenTypes):
-        self.raw = raw
-        self.type = type_
+    def __init__(self, expr: Token):
+        self.token = expr
 
     @functools.cached_property
     def variables(self) -> set:
-        return self.free_variables
+        return {self.token.raw} if self.token.type == TokenTypes.ID else set()
 
     @functools.cached_property
     def free_variables(self) -> set:
-        return {self.raw} if self.type == TokenTypes.ID else set()
+        return self.variables
 
     @property
     def bound_variables(self) -> set:
         return set()
 
     def execute(
-            self, closure: dict, callstack: List[AnyExpressionType] = None, **context
+            self, closure: dict, callstack: List[AnyExpressionType] = None, 
+            parent_closure: dict = None
     ) -> ExecutionResult:
-        if self.type == TokenTypes.INTEGER:
-            return ExecutionResult(LiteralType, IntegerObject(self.raw))
-        elif self.type == TokenTypes.REAL:
-            return ExecutionResult(LiteralType, RealObject(self.raw))
-        elif self.type == TokenTypes.COMPLEX:
-            return ExecutionResult(LiteralType, ComplexObject(self.raw))
-        elif self.type == TokenTypes.STRING:
-            return ExecutionResult(LiteralType, StringObject(self.raw))
-        elif self.type == TokenTypes.BOOLEAN:
-            return ExecutionResult(LiteralType, BooleanObject(1 if self.raw == 'true' else 0))
+        if self.token.type == TokenTypes.INTEGER:
+            return ExecutionResult(LiteralType, IntegerObject(self.token.raw))
+        elif self.token.type == TokenTypes.REAL:
+            return ExecutionResult(LiteralType, RealObject(self.token.raw))
+        elif self.token.type == TokenTypes.COMPLEX:
+            return ExecutionResult(LiteralType, ComplexObject(self.token.raw[:-2] + 'j'))
+        elif self.token.type == TokenTypes.STRING:
+            return ExecutionResult(LiteralType, StringObject(self.token))
+        elif self.token.type == TokenTypes.BOOLEAN:
+            return ExecutionResult(
+                LiteralType, BooleanObject(1 if self.token.raw == 'true' else 0)
+            )
         else:  # type ID
-            if self.raw in closure.keys():
-                expr, eval_closure = closure[self.raw]
-                return expr.execute(
-                    eval_closure if eval_closure is not None else closure, callstack
-                )
+            if self.token.raw in closure.keys():
+                expr, eval_closure = closure[self.token.raw]
+                return expr.execute(eval_closure or closure, callstack)
             else:
                 return ExecutionResult(AtomExpression, self)
 
     def __repr__(self):
-        return self.raw
+        return self.token.raw
 
     @functools.cached_property
     def dict_repr(self) -> dict:
         return {
             'ast_node_name': self.__class__.__name__,
-            'type': repr(self.type),
-            'raw': repr(self.raw)
+            'type': self.token.type.name,
+            'expr': self.token.raw
         }
-
-
-class _UniqueInternalName(AtomExpression):
-    _new_id = itertools.count()
-
-    def __init__(self):
-        super().__init__(str(next(_UniqueInternalName._new_id)), TokenTypes.ID)
 
 
 class ExpressionList(ASTNode, list):
     append: Callable[[AnyExpressionType], None]
 
     def __repr__(self):
-        return f"{', '.join(repr(item) for item in self)}"
+        return ', '.join(repr(item) for item in self)
 
     @property
     def dict_repr(self) -> dict:
@@ -620,15 +651,16 @@ class ExpressionList(ASTNode, list):
         }
 
 
+# todo: implement slicing
 class IdList(ASTNode, list):
-    append: Callable[[str], None]
+    append: Callable[[Token], None]
 
     @property
-    def only_raw_ids(self):
-        return [id_ for id_ in self]
+    def raw(self):
+        return [id_.raw for id_ in self]
 
     def __repr__(self):
-        return f"{', '.join(id_ for id_ in self)}"
+        return f"{', '.join(id_.raw for id_ in self)}"
 
     @property
     def dict_repr(self) -> dict:
@@ -636,3 +668,21 @@ class IdList(ASTNode, list):
             'ast_node_name': self.__class__.__name__,
             'identifiers': [repr(id_) for id_ in self]
         }
+
+
+if __name__ == '__main__':
+    from quark.core.scanner import QuarkScanner
+    from quark.core.parser import QuarkParser
+    closure_, parent_closure_ = dict(), dict()
+    while src_in := input('>>> '):
+        scanner = QuarkScanner(src_in)
+        tokens = scanner.tokens()
+        parser = QuarkParser(tokens)
+        ast = parser.build_parse_tree()
+        for expr_ in ast:
+            print(
+                f'{type(expr_)}\n'
+                f'{repr(expr_)}\n'
+                f'{expr_.json_repr}\n'
+                f'{expr_.execute(closure_, parent_closure_)}'
+            )

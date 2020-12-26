@@ -1,5 +1,6 @@
 from quark.core.token_ import (
-    Token, TokenTypes, single_char_tokens, double_char_tokens, triple_char_tokens, keyword_tokens
+    Token, TokenTypes, single_char_tokens, double_char_tokens, triple_char_tokens,
+    keyword_tokens
 )
 
 from typing import List, Tuple, Union, Generator
@@ -143,7 +144,10 @@ class QuarkScanner:
                 self._discard_consumed_chars()
                 return Token(TokenTypes.SKIP, ret, pos)
 
-        if self._is_num_char():
+        if self._current_nchars(3) in triple_char_tokens.keys():
+            self._consume_nchars(3)
+            type_ = triple_char_tokens[self._consumed_chars]
+        elif self._is_num_char():
             must_be_real_or_zero = self._match('0')
             self._consume_char()
             while self._is_num_char():
@@ -151,8 +155,7 @@ class QuarkScanner:
                     self._expect(
                         '0', 'leading zeros in decimal integer literals are not permitted'
                     )
-                else:
-                    self._consume_char()
+                self._consume_char()
             if self._match('.'):
                 self._consume_char()
                 while self._is_num_char():
@@ -183,9 +186,6 @@ class QuarkScanner:
             self._expect('"', 'EOL while scanning string literal')
             self._consume_char()
             type_ = TokenTypes.STRING
-        elif self._current_nchars(3) in triple_char_tokens.keys():
-            self._consume_nchars(3)
-            type_ = triple_char_tokens[self._consumed_chars]
         elif self._current_nchars(2) in double_char_tokens.keys():
             self._consume_nchars(2)
             type_ = double_char_tokens[self._consumed_chars]
@@ -219,3 +219,12 @@ class QuarkScanner:
     def get_tokens(self) -> Generator[Token, None, None]:
         while not self._reached_end_of_source():
             yield self.next_token()
+
+
+if __name__ == '__main__':
+    test = ';'
+    lexer = QuarkScanner(test)
+    while test := input('>>> '):
+        lexer.reset(test)
+        for t in lexer.get_tokens():
+            print(repr(t))
