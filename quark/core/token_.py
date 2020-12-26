@@ -1,3 +1,4 @@
+import itertools
 from enum import IntEnum
 from typing import Tuple
 
@@ -66,6 +67,7 @@ tok_type_names = (
     'AND',
     'OR',
     'DOUBLE_COLON_EQUAL',
+    'EQUAL_GREATER',
     'operator_end',
 
     # Keyword tokens
@@ -77,6 +79,9 @@ tok_type_names = (
     'ELIF',
     'ELSE',
     'LET',
+    'DEF',
+    'DEFUN',
+    'REDEF',
     'LETREC',
     'CONST',
     'WITH',
@@ -94,6 +99,7 @@ tok_type_names = (
     'separator_beg',
     'COMMA',
     'PERIOD',
+    'QUESTION_MARK_LEFT_PARENTHESIS',
     'LEFT_PARENTHESIS',
     'RIGHT_PARENTHESIS',
     'LEFT_CURLY_BRACKET',
@@ -105,6 +111,7 @@ tok_type_names = (
     'SEMICOLON',
     'BACKSLASH',
     'VERTICAL_BAR',
+    'QUESTION_MARK',
     'SPACE',
     'TAB',
     'SPACE',
@@ -141,6 +148,7 @@ single_char_tokens = {
     '>': TokenTypes.GREATER,
     '=': TokenTypes.EQUAL,
     ':': TokenTypes.COLON,
+    '?': TokenTypes.QUESTION_MARK,
     '\n': TokenTypes.NEWLINE,
 }
 
@@ -153,12 +161,15 @@ double_char_tokens = {
     '<=': TokenTypes.LESS_EQUAL,
     '>=': TokenTypes.GREATER_EQUAL,
     '==': TokenTypes.DOUBLE_EQUAL,
+    '=>': TokenTypes.EQUAL_GREATER,
     '::': TokenTypes.DOUBLE_COLON,
+    '?(': TokenTypes.QUESTION_MARK_LEFT_PARENTHESIS
 }
 
 
 triple_char_tokens = {
-    '::=': TokenTypes.DOUBLE_COLON_EQUAL
+    '::=': TokenTypes.DOUBLE_COLON_EQUAL,
+    '...': TokenTypes.ELLIPSIS
 }
 
 
@@ -184,6 +195,9 @@ keyword_tokens = {
     'in': TokenTypes.IN,
     'on': TokenTypes.ON,
     'as': TokenTypes.AS,
+    'def': TokenTypes.DEF,
+    'redef': TokenTypes.REDEF,
+    'defun': TokenTypes.DEFUN,
     'lambda': TokenTypes.LAMBDA,
     'fun': TokenTypes.FUN,
     'import': TokenTypes.IMPORT,
@@ -201,6 +215,8 @@ all_tokens = {
 
 
 class Token:
+    _new_id = itertools.count()
+
     def __init__(self, type_: TokenTypes, value: str, pos: Tuple[int, int]):
         self.raw = value
         self.type = type_
@@ -275,7 +291,7 @@ class Token:
             return -1  # default
 
     def __str__(self):
-        return f'<{self.type.name}>: {repr(self.raw)} at {self.pos}'
+        return f'TokenTypes.{self.type.name}, {repr(self.raw)}, {self.pos}'
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.__str__()})'
